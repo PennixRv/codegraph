@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.1] - 2026-10-14
+
 ### Highlights
 
 - Pennix fork 仅发布 Linux x64，安装入口为 `npm install -g @pennixrv/codegraph`。
@@ -1326,3 +1329,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.0]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.0
 [1.6.1]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.1
 [1.6.2]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.2
+[1.6.2-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.1
