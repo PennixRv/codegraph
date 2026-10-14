@@ -100,5 +100,6 @@ default project — but the tools are available and work **per project**:
   projects as you like in one session.
 - For a project with no usable \`.codegraph/\`, use local source tools.
   Initialization or reindexing requires explicit authorization and an exact
-  project path. A newly created index is picked up live without a server restart.
+  project path; when approved, run \`codegraph init\` in that project. A newly
+  created index is picked up live without a server restart.
 `;
