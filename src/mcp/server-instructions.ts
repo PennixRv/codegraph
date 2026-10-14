@@ -7,9 +7,8 @@
  * before it sees individual tool descriptions.
  *
  * Goals when editing this:
- *   - Lead the agent to codegraph_explore for any structural/flow question
- *   - Reinforce "explore instead of Read/Grep" for indexed code
- *   - Anti-patterns (don't re-verify with grep; don't hand-reconstruct flows)
+ *   - Explain structural queries, native capabilities and index limitations
+ *   - Respect host routing, project authorization and correctness verification
  *
  * Keep it tight. The agent reads this every session — long instructions
  * burn tokens. The DEFAULT MCP surface is `codegraph_explore` ALONE (see
@@ -46,10 +45,10 @@ file operations and verification still follow the host's native local tools.
 
 ## How to query
 
-- **Almost any question — "how does X work", architecture, a bug, "what/where is X", or surveying an area** → \`codegraph_explore\` with a natural-language question or the relevant names. ONE capped call returns the verbatim source grouped by file; most often the ONLY call you need.
+- **Architecture, callers, impact or a flow** → \`codegraph_explore\` with the relevant names or short code terms. A capped call returns source grouped by file and the relationships among matches.
 - **"How does X reach/become Y? / the flow / the path from X to Y"** → \`codegraph_explore\`, naming the symbols that span the flow (e.g. \`mutateElement renderScene\`) — it surfaces the call path among them, riding dynamic-dispatch hops, and returns their source.
-- **Reading or editing a file/symbol you can name** → put its name or file path in the \`codegraph_explore\` query — it returns that current line-numbered source (safe to \`Edit\` from) with the call path and blast radius attached, so you don't Read it separately. For an overloaded name it returns every matching definition's body in one call.
-- **Need more?** Call \`codegraph_explore\` again with more specific names — treat the source it returns as already Read. Suggested call counts are advisory only, NOT a quota; extra calls are never rejected or rate-limited.
+- **Structural context for a known file or symbol** → use its name or file path to obtain source, call paths and dependents. Overloaded names may return several definitions; resolve ambiguity before editing.
+- **Need more?** Narrow the query or use the host's local tools for a missing detail. Reuse unchanged source already available in the current context; correctness checks remain necessary.
 - Qualified symbol names accept dots, \`::\`, or slashes, including containers whose names contain dots (for example, \`AppWeb.Format.group\`).
 - Named-symbol call paths require exact matches; partial or mistyped names are never silently substituted as flow endpoints. If a graph query reports a missing symbol with did-you-mean suggestions, query the suggested name explicitly.
 - Explore matches names and indexed code words lexically, not by meaning; an empty result reports word matches and may suggest indexed candidate names to retry with \`codegraph_explore\`.
@@ -66,7 +65,7 @@ file operations and verification still follow the host's native local tools.
 
 ## Limitations
 
-- If a tool reports a project isn't indexed (no \`.codegraph/\`), stop calling codegraph tools for that project for the rest of the session and use your built-in tools there instead. Indexing is the user's decision — mention they can run \`codegraph init\` if it comes up, but don't run it yourself.
+- If a project has no usable \`.codegraph/\` index, use local source tools. Project initialization or reindexing requires explicit authorization and an exact project path.
 - Index lags file writes by ~1 second.
 - Cross-file resolution is best-effort name matching; ambiguous calls may return multiple candidates.
 - No live correctness validation — that's still the TypeScript compiler / test suite / linter's job. Codegraph supplements those with structural context they don't have.
@@ -89,7 +88,7 @@ export const SERVER_INSTRUCTIONS_NO_ROOT_INDEX = `# Codegraph — available (per
 Codegraph is a SQLite knowledge graph of a codebase's symbols, edges, and
 files (30+ languages): one \`codegraph_explore\` call returns the verbatim, line-numbered source
 of the relevant symbols PLUS the call paths between them and a blast-radius
-summary — replacing a grep + Read loop with one round-trip.
+summary. Follow the host's tool routing and verify material conclusions where needed.
 
 This server started somewhere with no \`.codegraph/\` of its own, so there is no
 default project — but the tools are available and work **per project**:
@@ -99,8 +98,7 @@ default project — but the tools are available and work **per project**:
   \`codegraph_explore\` (and any other codegraph tool). Codegraph resolves the
   nearest \`.codegraph/\` at or above that path and answers from it — for as many
   projects as you like in one session.
-- For a project with no \`.codegraph/\`, use your built-in tools (Read/Grep/Glob)
-  for that project. Indexing is the user's decision — don't run it yourself, but
-  if it comes up they can run \`codegraph init\` in a project to enable codegraph
-  there (a new index is picked up live, no restart).
+- For a project with no usable \`.codegraph/\`, use local source tools.
+  Initialization or reindexing requires explicit authorization and an exact
+  project path. A newly created index is picked up live without a server restart.
 `;
