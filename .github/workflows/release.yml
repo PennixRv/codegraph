@@ -15,11 +15,8 @@ name: Release
 # Before triggering: bump package.json. CHANGELOG.md entries can live under
 # `## [Unreleased]` — step 2 takes care of moving them.
 #
-# npm auth is OIDC trusted publishing (no NPM_TOKEN): every published package
-# (@colbymchenry/codegraph + the per-platform bundles) has this repo +
-# release.yml configured as its trusted publisher on npmjs.com. Adding a new
-# platform package means configuring its trusted publisher there before the
-# first release that includes it.
+# Pennix publishes the Linux x64 platform package and shim with NPM_TOKEN.
+# OIDC remains enabled for npm provenance and GitHub artifact attestations.
 on:
   workflow_dispatch: {}
 
@@ -44,14 +41,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
-            targets: aarch64-apple-darwin x86_64-apple-darwin
           - runner: ubuntu-22.04 # oldest glibc runner → widest compatibility
             targets: x86_64-unknown-linux-gnu
-          - runner: ubuntu-22.04-arm
-            targets: aarch64-unknown-linux-gnu
-          - runner: windows-latest
-            targets: x86_64-pc-windows-msvc aarch64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
@@ -77,28 +68,14 @@ jobs:
           # Default checkout is detached at a SHA; we need an actual branch
           # so the CHANGELOG-promote commit knows where to push.
           ref: ${{ github.ref }}
-          # Authenticate as the maintainer (admin), not as github-actions[bot].
-          # The "Require PR approval for main branch" ruleset only lets the
-          # Admin repo role bypass — and GitHub blocks adding the GitHub
-          # Actions integration to bypass_actors on user-owned (non-org)
-          # repos with "Actor GitHub Actions integration must be part of
-          # the ruleset source or owner organization." So the auto-promote
-          # and auto-sync `git push origin HEAD:main` steps below both fail
-          # under the default GITHUB_TOKEN. Using a fine-grained PAT owned
-          # by the admin makes the push go through cleanly. Set the
-          # RELEASE_PAT secret with: contents:write on this repo, no other
-          # scopes. Rotate per your token policy; the workflow only runs
-          # on manual dispatch so the blast radius is small.
-          token: ${{ secrets.RELEASE_PAT }}
+          # The Pennix fork uses the workflow's scoped contents permission.
+          token: ${{ github.token }}
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          # No registry-url here: it writes an .npmrc that requires a
-          # NODE_AUTH_TOKEN env var to exist, and we publish via OIDC
-          # trusted publishing instead of a token.
+          registry-url: https://registry.npmjs.org
 
-      - name: Upgrade npm for OIDC trusted publishing
-        # Trusted publishing needs npm >= 11.5; Node 22 bundles npm 10.
+      - name: Upgrade npm for provenance support
         run: npm install -g npm@11 && npm --version
 
       - name: Sync package-lock.json if version drifted
@@ -138,6 +115,8 @@ jobs:
           git push origin "HEAD:${GITHUB_REF#refs/heads/}"
 
       - run: npm ci
+      - name: Full test gate
+        run: npm test
       - name: Ensure zip/unzip
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zip unzip
 
@@ -196,7 +175,7 @@ jobs:
 
       - name: Build all platform bundles
         run: |
-          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64; do
+          for t in linux-x64; do
             bash scripts/build-bundle.sh "$t"
           done
           ls -lh release
@@ -213,7 +192,7 @@ jobs:
         # was built by this workflow from this repo — SHA256SUMS alone only
         # proves integrity, not origin, since it ships next to the bundles.
         # Verify any downloaded artifact with:
-        #   gh attestation verify <file> -R colbymchenry/codegraph
+        #   gh attestation verify <file> -R PennixRv/codegraph
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
@@ -243,15 +222,14 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/codegraph-* release/SHA256SUMS --clobber
           else
-            gh release create "$TAG" release/codegraph-* release/SHA256SUMS --title "$TAG" --notes-file notes.md
+            gh release create "$TAG" release/codegraph-* release/SHA256SUMS --target "$(git rev-parse HEAD)" --title "$TAG" --notes-file notes.md
           fi
 
       - name: Publish to npm
-        # Auth is OIDC trusted publishing (id-token: write above) — npm mints
-        # a short-lived credential from the workflow's identity; there is no
-        # NPM_TOKEN. Provenance is generated automatically on this path; the
-        # explicit --provenance keeps the intent visible and fails loudly if
-        # OIDC is ever unavailable.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Token authentication plus OIDC provenance; never publish the source
+        # package directly, because the shim must use the bundled runtime.
         run: |
           V="${{ steps.ver.outputs.version }}"
           bash scripts/pack-npm.sh "$V"
@@ -266,7 +244,7 @@ jobs:
               # --provenance: publish with an npm provenance attestation
               # (needs the id-token: write permission above and the
               # repository field pack-npm.sh writes into each package.json).
-              ( cd "$dir" && npm publish --access public --provenance )
+              ( cd "$dir" && npm publish --access public --provenance --tag latest )
             fi
           done
 

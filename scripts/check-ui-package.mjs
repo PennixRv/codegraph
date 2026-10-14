@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Finish and verify the `@colbymchenry/codegraph-ui` build (task CG-61).
+ * Finish and verify the `@pennixrv/codegraph-ui` build (task CG-61).
  *
  * `svelte-package` compiles the whole of `ui/src`, which is the right input —
  * the components a host imports and the ones `codegraph ui` renders are the

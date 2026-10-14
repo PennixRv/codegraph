@@ -1,3 +1,11 @@
+## Pennix 受限 fork
+
+本 fork 基于上游 `v1.6.2`，仅交付 Linux x64；维护仓库为 [PennixRv/codegraph](https://github.com/PennixRv/codegraph)，安装入口为 `npm install -g @pennixrv/codegraph`。平台包 `@pennixrv/codegraph-linux-x64` 与主包同版本并携带 Node 24、原生内核及 WASM。上游许可证和原始说明保留在下文；下文的上游 npm 名称、平台宣传和发布记录不代表 Pennix 支持范围。
+
+全局 Codex/OpenCode install、refresh、upgrade 和 uninstall 不读写用户级 `AGENTS.md`。显式 `codegraph install --target codex --location local --yes` 在当前已批准项目根目录配置 MCP 并维护项目短块；异常标记、符号链接和用户配置目录会阻止写入。Codex 与 OpenCode 共用短块时仅最后消费者卸载可移除；未知消费者保留。用户导航、系统安装和项目治理分别由 Pennix Skills 与 lifecycle 负责，原生 MCP instructions 和 CLI help 保持协议权威。其他宿主仅保留上游兼容行为，未获得本 fork 的功能验收保障。
+
+发布通过本仓库 Release workflow，使用 NPM_TOKEN Secret 与 provenance，先平台包后主 shim，逐包核验 registry。维护记录见 `.trellis/tasks/`；不会自动初始化项目或重建索引。
+
 <div align="center">
 
 # CodeGraph

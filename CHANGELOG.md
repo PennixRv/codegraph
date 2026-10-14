@@ -12,6 +12,15 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Highlights
+
+- Pennix fork 仅发布 Linux x64，安装入口为 `npm install -g @pennixrv/codegraph`。
+- Codex 和 OpenCode 的全局安装、刷新与卸载保留用户级 `AGENTS.md`，项目短块仍由显式本地安装管理。
+
+### Fixes
+
+- 项目规则中的重复、缺失或逆序标记以及符号链接会阻止不安全写入，块外正文保持原样。
+- Codex 和 OpenCode 共用项目短块时，只有最后一个消费者卸载才移除该块；消费者状态不明确时保留。
 
 ## [1.6.2] - 2026-10-03
 

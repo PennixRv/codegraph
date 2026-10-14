@@ -1,5 +1,5 @@
 /**
- * `@colbymchenry/codegraph-ui` — the package's own test (task CG-61).
+ * `@pennixrv/codegraph-ui` — the package's own test (task CG-61).
  *
  * A minimal Svelte host mounts the three headline components from the package
  * entry against a MOCK adapter and asserts what lands in the document. That is
@@ -501,7 +501,7 @@ async function render(
   }
 }
 
-describe('@colbymchenry/codegraph-ui — a host renders the package', () => {
+describe('@pennixrv/codegraph-ui — a host renders the package', () => {
   it('SymbolView draws callers, source and the callee rail from a mock adapter', async () => {
     const { adapter, calls } = mockAdapter();
     setGraphAdapter(adapter);
@@ -650,7 +650,7 @@ describe('@colbymchenry/codegraph-ui — a host renders the package', () => {
   });
 });
 
-describe('@colbymchenry/codegraph-ui — the seams', () => {
+describe('@pennixrv/codegraph-ui — the seams', () => {
   it('a host navigation driver replaces every href the components build', () => {
     const seen: string[] = [];
     const driver: NavigationDriver = {
@@ -752,7 +752,7 @@ describe('@colbymchenry/codegraph-ui — the seams', () => {
   });
 });
 
-describe('@colbymchenry/codegraph-ui — the published shape', () => {
+describe('@pennixrv/codegraph-ui — the published shape', () => {
   const manifest = JSON.parse(
     readFileSync(join(ROOT, 'ui', 'package.json'), 'utf8')
   ) as Record<string, any>;
@@ -765,7 +765,7 @@ describe('@colbymchenry/codegraph-ui — the published shape', () => {
   });
 
   it('is named, scoped and not publishable by accident', () => {
-    expect(manifest.name).toBe('@colbymchenry/codegraph-ui');
+    expect(manifest.name).toBe('@pennixrv/codegraph-ui');
     // The package is PREPARED, not published (CG-61). `private` is the guard:
     // npm refuses to publish it until the maintainer deliberately removes this.
     expect(manifest.private).toBe(true);

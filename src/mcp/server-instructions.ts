@@ -24,14 +24,13 @@ the workspace — pre-computed structure you would otherwise re-derive by
 reading files (cached intelligence: thousands of parse/trace decisions you
 don't pay to re-reason each run). It indexes 30+ languages
 (TypeScript/JavaScript, Python, Go, Rust, Java, C#, C/C++, PHP, Ruby, Swift,
-Kotlin, and more) — don't assume a language here isn't covered. Reads are
-sub-millisecond; the index lags writes by ~1s through the file watcher. Reach for it BEFORE *and* while
-writing or editing code — not just for questions: one call returns the
-verbatim source PLUS who calls it and what it affects, so you edit with the
-blast radius in view. More accurate context, in far fewer tokens and
-round-trips than reading files yourself.
+Kotlin, and more). Use it for structural code questions in explicitly approved
+projects with a usable index. Follow the host's tool routing and project rules;
+installation, initialization and reindexing require their own authorization.
+The index may lag writes; verify freshness when correctness depends on current
+source. Missing tools or an unusable index permit bounded local source evidence.
 
-## One tool: codegraph_explore — use it instead of reading files
+## One tool: codegraph_explore — structural context and source
 
 There is a single tool, \`codegraph_explore\`, and it is Read-equivalent. It
 takes either a natural-language question or a bag of symbol/file names and
@@ -41,13 +40,9 @@ grouped by file — the same \`<n>\\t<line>\` shape \`Read\` gives you, safe to
 like callbacks, React re-render, and JSX children that grep can't follow) and
 a blast-radius summary of what depends on them.
 
-Whether you're answering "how does X work" or implementing a change (fixing a
-bug, adding a feature), call \`codegraph_explore\` before you Read. ONE call
-usually answers the whole question. Codegraph IS the pre-built search index —
-so running your own grep + read loop, or delegating the lookup to a separate
-file-reading sub-task/agent, repeats work codegraph already did and costs more
-for the same answer. A direct codegraph answer is typically one to a few
-calls; a grep/read exploration is dozens.
+For architecture, callers, impact or a flow, \`codegraph_explore\` can return
+relevant source and relationships together. Exact text, configuration, ordinary
+file operations and verification still follow the host's native local tools.
 
 ## How to query
 
@@ -61,8 +56,8 @@ calls; a grep/read exploration is dozens.
 
 ## Anti-patterns
 
-- **Trust codegraph's results — don't re-verify them with grep.** They come from a full AST parse; re-checking with grep is slower, less accurate, and wastes context.
-- **Don't grep or Read first** to find or understand indexed code — ONE \`codegraph_explore\` returns the relevant symbols' source together in a single round-trip. Reach for raw \`Read\`/\`Grep\` only to confirm a specific detail codegraph didn't cover, or for what codegraph doesn't index (configs, docs).
+- **Treat graph relationships as evidence with stated limits.** Resolution can be heuristic or ambiguous; verify material conclusions against current source and tests where needed.
+- **Use structural queries for structural questions.** Use the host's local file tools for exact text, configs, docs, unsupported or stale source, and required verification.
 - **Don't reconstruct a flow by hand** — name the endpoints in one \`codegraph_explore\` and it surfaces the path between them, dynamic-dispatch hops included.
 - **After editing, check the staleness banner.** When a tool response starts with "⚠️ Some files referenced below were edited since the last index sync…", the listed files are pending re-index — Read those specific files for accurate content. Every file NOT in that banner is fresh, so still trust codegraph. A different, rarer banner — "⚠️ CodeGraph auto-sync is DISABLED…" or "⚠️ CodeGraph auto-sync is RECOVERING…" — means the whole index may be stale; until the full catch-up completes, Read files directly to confirm anything that may have changed. If a response refuses to answer from changed files or says freshness could not be verified within its budget, retry after sync or narrow the query; that refusal is not an error in the tool.
 - **A file flagged "⚠ changed on disk after the last index sync" drifted from its index** (most common on projects queried via \`projectPath\`, which have no live watcher). Codegraph never serves a possibly-mis-sliced body from such a file — it either shows the file's full CURRENT source (trust it as a Read) or omits the source with this flag. When the source was omitted, Read that specific file; line numbers referencing it elsewhere in the response may be shifted until that project's next sync. All unflagged files remain trustworthy.
@@ -99,7 +94,7 @@ summary — replacing a grep + Read loop with one round-trip.
 This server started somewhere with no \`.codegraph/\` of its own, so there is no
 default project — but the tools are available and work **per project**:
 
-- To query a project that HAS a \`.codegraph/\` index (e.g. a service inside a
+- To query an explicitly approved project that HAS a usable \`.codegraph/\` index (e.g. a service inside a
   monorepo, or a second repo), pass its path as \`projectPath\` to
   \`codegraph_explore\` (and any other codegraph tool). Codegraph resolves the
   nearest \`.codegraph/\` at or above that path and answers from it — for as many

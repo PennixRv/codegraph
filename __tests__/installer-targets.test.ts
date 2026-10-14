@@ -30,7 +30,7 @@ function mkTmpDir(label: string): string {
 }
 
 describe('standalone installer Windows shell guidance (#1294)', () => {
-  const command = 'irm https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.ps1 | iex';
+  const command = 'irm https://raw.githubusercontent.com/PennixRv/codegraph/main/install.ps1 | iex';
   const source = fs.readFileSync(path.join(__dirname, '..', 'install.sh'), 'utf8');
 
   // Stub uname and downloads, but execute the complete shipped installer.
@@ -253,39 +253,33 @@ describe('Installer targets — partial-state idempotency', () => {
     fs.rmSync(tmpCwd, { recursive: true, force: true });
   });
 
-  it('codex: install writes config.toml AND the AGENTS.md codegraph block (#704)', () => {
+  it('codex: global install writes config.toml without a user AGENTS block', () => {
     const codex = getTarget('codex')!;
     const first = codex.install('global', { autoAllow: false });
     const agentsMd = path.join(tmpHome, '.codex', 'AGENTS.md');
     expect(first.files.some((f) => f.path.endsWith('config.toml'))).toBe(true);
-    // The short instructions block IS written (subagents / non-MCP
-    // harnesses read AGENTS.md but never the MCP initialize instructions).
-    expect(fs.existsSync(agentsMd)).toBe(true);
-    const body = fs.readFileSync(agentsMd, 'utf-8');
-    expect(body).toContain('## CodeGraph');
-    expect(body).toContain('codegraph explore');
+    expect(fs.existsSync(agentsMd)).toBe(false);
     // Re-install is fully unchanged (byte-equal block → idempotent).
     const second = codex.install('global', { autoAllow: false });
     for (const f of second.files) expect(f.action).toBe('unchanged');
   });
 
-  it('codex: install replaces a legacy AGENTS.md codegraph block with the current one, keeping user content', () => {
+  it('codex: global install preserves legacy user AGENTS byte for byte', () => {
     const codex = getTarget('codex')!;
     const dir = path.join(tmpHome, '.codex');
     fs.mkdirSync(dir, { recursive: true });
     const agentsMd = path.join(dir, 'AGENTS.md');
     fs.writeFileSync(agentsMd, `# My codex notes\n\nBe terse.\n\n${LEGACY_BLOCK}\n`);
+    const before = fs.readFileSync(agentsMd, 'utf-8');
 
     const result = codex.install('global', { autoAllow: false });
 
     const body = fs.readFileSync(agentsMd, 'utf-8');
     expect(body).toContain('# My codex notes');
     expect(body).toContain('Be terse.');
-    // Self-heal: the stale pre-#529 body is gone, the current block is in.
-    expect(body).not.toContain('Prefer `codegraph_search`');
-    expect(body).toContain('codegraph explore');
+    expect(body).toBe(before);
     const mdEntry = result.files.find((f) => f.path.endsWith('AGENTS.md'));
-    expect(mdEntry?.action).toBe('updated');
+    expect(mdEntry).toBeUndefined();
   });
 
   it('codex: local install writes ./.codex/config.toml and the project-root ./AGENTS.md block (#1531)', () => {
@@ -391,33 +385,32 @@ describe('Installer targets — partial-state idempotency', () => {
     expect(fs.readFileSync(file, 'utf-8')).toBe(afterInstall);
   });
 
-  it('opencode: install writes the AGENTS.md codegraph block (#704)', () => {
+  it('opencode: global install leaves user AGENTS absent', () => {
     const opencode = getTarget('opencode')!;
     const result = opencode.install('global', { autoAllow: true });
     const agentsMd = path.join(tmpHome, '.config', 'opencode', 'AGENTS.md');
-    expect(fs.existsSync(agentsMd)).toBe(true);
-    expect(fs.readFileSync(agentsMd, 'utf-8')).toContain('codegraph explore');
-    expect(result.files.find((f) => f.path.endsWith('AGENTS.md'))?.action).toBe('created');
+    expect(fs.existsSync(agentsMd)).toBe(false);
+    expect(result.files.find((f) => f.path.endsWith('AGENTS.md'))).toBeUndefined();
   });
 
-  it('opencode: install replaces a legacy AGENTS.md codegraph block, preserving user content', () => {
+  it('opencode: global install preserves legacy user AGENTS byte for byte', () => {
     const opencode = getTarget('opencode')!;
     const dir = path.join(tmpHome, '.config', 'opencode');
     fs.mkdirSync(dir, { recursive: true });
     const agentsMd = path.join(dir, 'AGENTS.md');
     fs.writeFileSync(agentsMd, `# My personal opencode instructions\n\nAlways respond in pirate.\n\n${LEGACY_BLOCK}\n`);
+    const before = fs.readFileSync(agentsMd, 'utf-8');
 
     const result = opencode.install('global', { autoAllow: true });
 
     const body = fs.readFileSync(agentsMd, 'utf-8');
     expect(body).toContain('# My personal opencode instructions');
     expect(body).toContain('Always respond in pirate.');
-    expect(body).not.toContain('Prefer `codegraph_search`');
-    expect(body).toContain('codegraph explore');
-    expect(result.files.find((f) => f.path.endsWith('AGENTS.md'))?.action).toBe('updated');
+    expect(body).toBe(before);
+    expect(result.files.find((f) => f.path.endsWith('AGENTS.md'))).toBeUndefined();
   });
 
-  it('opencode: uninstall strips a leftover codegraph block from AGENTS.md, keeping user content', () => {
+  it('opencode: global uninstall leaves user AGENTS untouched', () => {
     const opencode = getTarget('opencode')!;
     const dir = path.join(tmpHome, '.config', 'opencode');
     fs.mkdirSync(dir, { recursive: true });
@@ -429,7 +422,7 @@ describe('Installer targets — partial-state idempotency', () => {
     const body = fs.readFileSync(agentsMd, 'utf-8');
     expect(body).toContain('# My personal opencode instructions');
     expect(body).toContain('Always respond in pirate.');
-    expect(body).not.toContain('CODEGRAPH_START');
+    expect(body).toContain(LEGACY_BLOCK);
   });
 
   it('opencode: local install writes ./opencode.jsonc and the ./AGENTS.md block (#704)', () => {
@@ -1241,10 +1234,10 @@ describe('Installer targets — partial-state idempotency', () => {
     const file = seedSettings('local', {
       hooks: {
         PostToolUse: [
-          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'npx @colbymchenry/codegraph mark-dirty', async: true }] },
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'npx @PennixRv/codegraph mark-dirty', async: true }] },
         ],
         Stop: [
-          { hooks: [{ type: 'command', command: 'npx @colbymchenry/codegraph sync-if-dirty' }] },
+          { hooks: [{ type: 'command', command: 'npx @PennixRv/codegraph sync-if-dirty' }] },
         ],
       },
     });
@@ -1325,7 +1318,7 @@ describe('Installer targets — partial-state idempotency', () => {
   });
 
   it('claude: writePromptHookEntry leaves an npx-form hook untouched (no duplicate, no rewrite)', () => {
-    const npxCmd = 'npx @colbymchenry/codegraph prompt-hook';
+    const npxCmd = 'npx @PennixRv/codegraph prompt-hook';
     const file = seedSettings('global', {
       hooks: { UserPromptSubmit: [{ hooks: [{ type: 'command', command: npxCmd }] }] },
     });
@@ -2205,13 +2198,11 @@ describe('Installer targets — opencode XDG config path (#535)', () => {
     expect(legacyText).not.toContain('codegraph');
     expect(legacyText).toContain('"other"');
     expect(legacyText).toContain('// my servers');
-    // …and the legacy AGENTS.md — block-only, so emptied — removed outright
-    // (removeMarkedSection unlinks a file it leaves empty).
-    expect(fs.existsSync(path.join(legacyDir(), 'AGENTS.md'))).toBe(false);
-    // Both cleanups are reported.
+    // User instructions are outside the fork installer's ownership.
+    expect(fs.readFileSync(path.join(legacyDir(), 'AGENTS.md'), 'utf8')).toBe(LEGACY_BLOCK + '\n');
     const removed = result.files.filter((f) => f.action === 'removed').map((f) => f.path);
     expect(removed.some((p) => inLegacyDir(p) && p.endsWith('opencode.jsonc'))).toBe(true);
-    expect(removed.some((p) => inLegacyDir(p) && p.endsWith('AGENTS.md'))).toBe(true);
+    expect(removed.some((p) => inLegacyDir(p) && p.endsWith('AGENTS.md'))).toBe(false);
   });
 
   it('uninstall sweeps the legacy %APPDATA% entry too (no prior re-install needed)', () => {
@@ -2944,8 +2935,7 @@ describe('Installer targets — Codex CODEX_HOME override (#1627)', () => {
     const toml = result.files.find((f) => f.path.endsWith('config.toml'))!;
     expect(path.resolve(toml.path)).toBe(path.resolve(path.join(custom, 'config.toml')));
     expect(fs.readFileSync(path.join(custom, 'config.toml'), 'utf-8')).toContain('[mcp_servers.codegraph]');
-    // The global AGENTS.md follows the config dir.
-    expect(fs.existsSync(path.join(custom, 'AGENTS.md'))).toBe(true);
+    expect(fs.existsSync(path.join(custom, 'AGENTS.md'))).toBe(false);
     // Nothing of ours may land in the default profile Codex is not reading.
     expect(fs.existsSync(defaultDir())).toBe(false);
   });
