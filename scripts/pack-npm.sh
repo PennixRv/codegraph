@@ -5,7 +5,7 @@
 # Produces, under release/npm/:
 #   codegraph-<target>/   one per built bundle — the vendored Node + app, tagged
 #                         with os/cpu so npm installs only the matching one.
-#   main/                 the @colbymchenry/codegraph shim package: a tiny bin
+#   main/                 the @pennixrv/codegraph shim package: a tiny bin
 #                         that execs the matching platform bundle, with every
 #                         platform package in optionalDependencies.
 #
@@ -19,7 +19,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-$(node -p "require('$ROOT/package.json').version")}"
-SCOPE="@colbymchenry"
+SCOPE="@pennixrv"
 REL="$ROOT/release"
 NPM="$REL/npm"
 
@@ -29,6 +29,7 @@ mkdir -p "$NPM/main"
 shopt -s nullglob
 archives=("$REL"/codegraph-*.tar.gz "$REL"/codegraph-*.zip)
 [ ${#archives[@]} -gt 0 ] || { echo "[pack-npm] no bundles in $REL — run build-bundle.sh first" >&2; exit 1; }
+[[ ${#archives[@]} -eq 1 && "${archives[0]}" == "$REL/codegraph-linux-x64.tar.gz" ]] || { echo "[pack-npm] Pennix releases require exactly the Linux x64 bundle" >&2; exit 1; }
 
 targets=()
 for archive in "${archives[@]}"; do
@@ -71,7 +72,7 @@ for archive in "${archives[@]}"; do
         license: "MIT",
         // npm --provenance refuses to publish unless this matches the repo
         // the release workflow runs in.
-        repository: { type: "git", url: "git+https://github.com/colbymchenry/codegraph.git" }
+        repository: { type: "git", url: "git+https://github.com/PennixRv/codegraph.git" }
       }, null, 2) + "\n");
     ' "$pkgdir/package.json"
   targets+=("$target")
@@ -119,7 +120,7 @@ VERSION="$VERSION" SCOPE="$SCOPE" TARGETS="${targets[*]}" \
       optionalDependencies: opt,
       files: ["npm-shim.js","npm-sdk.js","dist","README.md"],
       license: "MIT",
-      repository: { type: "git", url: "git+https://github.com/colbymchenry/codegraph.git" }
+      repository: { type: "git", url: "git+https://github.com/PennixRv/codegraph.git" }
     }, null, 2) + "\n");
   ' "$NPM/main/package.json"
 
@@ -127,7 +128,7 @@ echo "[pack-npm] ${SCOPE}/codegraph@${VERSION} (${#targets[@]} platform packages
 echo "[pack-npm] output: $NPM"
 
 # ---------------------------------------------------------------------------
-# @colbymchenry/codegraph-ui — the viewer's components as a Svelte library.
+# @pennixrv/codegraph-ui — the viewer's components as a Svelte library.
 #
 # Staged into release/npm-ui/, NOT release/npm/: the workflow publishes
 # `release/npm/codegraph-*` by glob, and a directory named codegraph-ui in

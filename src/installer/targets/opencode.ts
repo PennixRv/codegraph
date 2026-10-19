@@ -59,13 +59,10 @@ import {
 import {
   atomicWriteFileSync,
   jsonDeepEqual,
-  removeMarkedSection,
+  removeProjectInstructionsEntry,
+  validateProjectInstructionsFile,
   upsertInstructionsEntry,
 } from './shared';
-import {
-  CODEGRAPH_SECTION_END,
-  CODEGRAPH_SECTION_START,
-} from '../instructions-template';
 
 function globalConfigDir(): string {
   // XDG_CONFIG_HOME if set, else ~/.config — on every platform, matching
@@ -174,12 +171,13 @@ class OpencodeTarget implements AgentTarget {
 
   install(loc: Location, _opts: InstallOptions): WriteResult {
     const files: WriteResult['files'] = [];
+    if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
     files.push(writeMcpEntry(loc));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
     // subagents and non-MCP harnesses read AGENTS.md but never the MCP
     // initialize instructions. Upsert self-heals a stale pre-#529 block.
-    files.push(upsertInstructionsEntry(instructionsPath(loc)));
+    if (loc === 'local') files.push(upsertInstructionsEntry(instructionsPath(loc)));
 
     // Self-heal a pre-#535 install that wrote to %APPDATA%/opencode —
     // opencode never reads it, so anything of ours there is stale.
@@ -190,8 +188,9 @@ class OpencodeTarget implements AgentTarget {
 
   uninstall(loc: Location): WriteResult {
     const files: WriteResult['files'] = [];
+    if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
     files.push(removeMcpEntryAt(configPath(loc)));
-    files.push(removeInstructionsEntry(loc));
+    if (loc === 'local') files.push(removeProjectInstructionsEntry(instructionsPath(loc), this.id));
     if (loc === 'global') files.push(...cleanupLegacyWindowsState());
     return { files };
   }
@@ -206,7 +205,7 @@ class OpencodeTarget implements AgentTarget {
   }
 
   describePaths(loc: Location): string[] {
-    return [configPath(loc), instructionsPath(loc)];
+    return loc === 'local' ? [configPath(loc), instructionsPath(loc)] : [configPath(loc)];
   }
 }
 
@@ -314,7 +313,7 @@ function removeMcpEntryAt(file: string): WriteResult['files'][number] {
 
 /**
  * Remove whatever a pre-#535 install left in `%APPDATA%/opencode` — an MCP
- * entry opencode never reads, plus our marker-fenced AGENTS.md block. Returns
+ * entry opencode never reads. User AGENTS is preserved. Returns
  * only files actually changed, so install output stays quiet when there is
  * nothing to heal. Never touches anything else in the legacy dir: a user may
  * genuinely keep other tools' state under %APPDATA%.
@@ -327,21 +326,7 @@ function cleanupLegacyWindowsState(): WriteResult['files'] {
     const res = removeMcpEntryAt(path.join(dir, name));
     if (res.action === 'removed') out.push(res);
   }
-  const agents = path.join(dir, 'AGENTS.md');
-  const action = removeMarkedSection(agents, CODEGRAPH_SECTION_START, CODEGRAPH_SECTION_END);
-  if (action === 'removed') out.push({ path: agents, action });
   return out;
-}
-
-/**
- * Strip the marker-delimited CodeGraph block from AGENTS.md if a prior
- * install wrote one. Used by both install (self-heal on upgrade) and
- * uninstall — see issue #529.
- */
-function removeInstructionsEntry(loc: Location): WriteResult['files'][number] {
-  const file = instructionsPath(loc);
-  const action = removeMarkedSection(file, CODEGRAPH_SECTION_START, CODEGRAPH_SECTION_END);
-  return { path: file, action };
 }
 
 export const opencodeTarget: AgentTarget = new OpencodeTarget();

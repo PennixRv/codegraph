@@ -10,6 +10,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import { ALL_TARGETS } from './registry';
+import type { TargetId } from './types';
 import {
   CODEGRAPH_INSTRUCTIONS_BLOCK,
   CODEGRAPH_SECTION_START,
@@ -172,6 +175,7 @@ export function replaceOrAppendMarkedSection(
   startMarker: string,
   endMarker: string,
 ): 'created' | 'updated' | 'appended' | 'unchanged' {
+  validateInstructionsFile(filePath, startMarker, endMarker);
   if (!fs.existsSync(filePath)) {
     atomicWriteFileSync(filePath, body + '\n');
     return 'created';
@@ -194,9 +198,8 @@ export function replaceOrAppendMarkedSection(
 
   // No markers — append. Preserve existing content with a separating
   // blank line.
-  const trimmed = content.trimEnd();
-  const sep = trimmed.length > 0 ? '\n\n' : '';
-  atomicWriteFileSync(filePath, trimmed + sep + body + '\n');
+  const sep = content.length > 0 ? (content.endsWith('\n\n') ? '' : '\n\n') : '';
+  atomicWriteFileSync(filePath, content + sep + body + '\n');
   return 'appended';
 }
 
@@ -234,6 +237,7 @@ export function removeMarkedSection(
   startMarker: string,
   endMarker: string,
 ): 'removed' | 'not-found' | 'kept' {
+  validateInstructionsFile(filePath, startMarker, endMarker);
   if (!fs.existsSync(filePath)) return 'kept';
 
   let content: string;
@@ -247,14 +251,68 @@ export function removeMarkedSection(
   const endIdx = content.indexOf(endMarker);
   if (startIdx === -1 || endIdx <= startIdx) return 'not-found';
 
-  const before = content.substring(0, startIdx).trimEnd();
-  const after = content.substring(endIdx + endMarker.length).trimStart();
-  const joined = before + (before && after ? '\n\n' : '') + after;
+  const joined = content.substring(0, startIdx) + content.substring(endIdx + endMarker.length);
 
   if (joined.trim() === '') {
     try { fs.unlinkSync(filePath); } catch { /* ignore */ }
   } else {
-    atomicWriteFileSync(filePath, joined.trim() + '\n');
+    atomicWriteFileSync(filePath, joined);
   }
   return 'removed';
+}
+
+/** Reject ambiguous ownership before touching either instructions or MCP config. */
+export function validateInstructionsFile(
+  file: string,
+  startMarker = CODEGRAPH_SECTION_START,
+  endMarker = CODEGRAPH_SECTION_END,
+): void {
+  const resolved = path.resolve(file);
+  for (let current = resolved; ; current = path.dirname(current)) {
+    try {
+      const stat = fs.lstatSync(current);
+      if (stat.isSymbolicLink() || (current === resolved ? !stat.isFile() : !stat.isDirectory())) {
+        throw new Error(`Refusing unsafe instructions path: ${current}`);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    if (path.dirname(current) === current) break;
+  }
+  if (!fs.existsSync(resolved)) return;
+  const content = fs.readFileSync(resolved, 'utf-8');
+  const starts = content.split(startMarker).length - 1;
+  const ends = content.split(endMarker).length - 1;
+  if ((starts === 0 && ends === 0) ||
+      (starts === 1 && ends === 1 && content.indexOf(startMarker) < content.indexOf(endMarker))) return;
+  throw new Error(`Refusing ambiguous instructions markers: ${file}`);
+}
+
+export function validateProjectInstructionsFile(file: string): void {
+  const userDirs = [os.homedir(), path.join(os.homedir(), '.codex'),
+    path.join(os.homedir(), '.config', 'opencode'), process.env.CODEX_HOME,
+    process.env.XDG_CONFIG_HOME && path.join(process.env.XDG_CONFIG_HOME, 'opencode')];
+  if (userDirs.some(dir => dir?.trim() && path.resolve(dir) === path.dirname(path.resolve(file)))) {
+    throw new Error(`Refusing user-scope AGENTS path for a local install: ${file}`);
+  }
+  validateInstructionsFile(file);
+}
+
+/** Codex and OpenCode share project AGENTS; uncertain consumers keep the block. */
+export function removeProjectInstructionsEntry(file: string, owner: TargetId): { path: string; action: 'removed' | 'not-found' | 'kept' } {
+  validateProjectInstructionsFile(file);
+  for (const target of ALL_TARGETS) {
+    if (target.id === owner || !target.supportsLocation('local') ||
+        !target.describePaths('local').some(p => path.resolve(p) === path.resolve(file))) continue;
+    try {
+      const detected = target.detect('local');
+      if (detected.alreadyConfigured || (detected.configPath && fs.existsSync(detected.configPath) &&
+          fs.readFileSync(detected.configPath, 'utf-8').includes('codegraph'))) {
+        return { path: file, action: 'kept' };
+      }
+    } catch {
+      return { path: file, action: 'kept' };
+    }
+  }
+  return { path: file, action: removeMarkedSection(file, CODEGRAPH_SECTION_START, CODEGRAPH_SECTION_END) };
 }

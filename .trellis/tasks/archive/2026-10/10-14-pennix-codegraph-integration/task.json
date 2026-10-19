@@ -1,0 +1,53 @@
+{
+  "id": "pennix-codegraph-integration",
+  "name": "pennix-codegraph-integration",
+  "title": "Pennix CodeGraph fork and AGENTS writer safety",
+  "description": "Deliver the approved minimal Linux x64 fork, protect user AGENTS and retain safe project short blocks.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "penn",
+  "assignee": "penn",
+  "createdAt": "2026-10-14",
+  "completedAt": "2026-10-14",
+  "branch": "codex/pennix-integration",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "execution_class": "planned",
+    "delivery_mode": "change_bearing",
+    "planning": {
+      "revision": 1,
+      "seal": {
+        "revision": 1,
+        "task_id": "pennix-codegraph-integration",
+        "task_name": "10-14-pennix-codegraph-integration",
+        "documents": [
+          "prd.md",
+          "design.md",
+          "implement.md"
+        ],
+        "document_digests": {
+          "prd.md": "a474668ea5cc1fa179cc08244e2b9715e39d2d04a8d934c5d1a3b3f455a2ce4b",
+          "design.md": "2b117ef9a4730890b1c963fe3b2d034f28e39cd24e5a9f43d89d2a18c4416036",
+          "implement.md": "9187596faef5d5c489d99839effb05c854fe4c963e8c87feeb78c02149bcac5a"
+        },
+        "execution_class": "planned",
+        "delivery_mode": "change_bearing",
+        "sealed_at": "2026-10-14T07:40:16.271893+00:00"
+      },
+      "approved_revision": 1,
+      "approval_basis": "用户明确批准完整修订包实施并要求完整推进；本组件当前封口范围逐项落实该批准，无新增取舍",
+      "approved_at": "2026-10-14T07:40:16.370578+00:00"
+    }
+  }
+}

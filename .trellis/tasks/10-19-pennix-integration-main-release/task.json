@@ -1,0 +1,53 @@
+{
+  "id": "pennix-integration-main-release",
+  "name": "pennix-integration-main-release",
+  "title": "Pennix integration to main and release",
+  "description": "Preserve the Pennix integration branch by merging it into CodeGraph main, then run the approved Linux x64 release and verify the lifecycle-driven local upgrade.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "penn",
+  "assignee": "penn",
+  "createdAt": "2026-10-19",
+  "completedAt": null,
+  "branch": "codex/pennix-integration",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "execution_class": "planned",
+    "delivery_mode": "change_bearing",
+    "planning": {
+      "revision": 1,
+      "seal": {
+        "revision": 1,
+        "task_id": "pennix-integration-main-release",
+        "task_name": "10-19-pennix-integration-main-release",
+        "documents": [
+          "prd.md",
+          "design.md",
+          "implement.md"
+        ],
+        "document_digests": {
+          "prd.md": "6ec10aaa428f8700956843eb82217bc3d95f715fa68abfdc48dd25dc9bf87338",
+          "design.md": "ade2187c419a3283cc35d2f02269333cd4300332af27dda4b984647d4f2e9a38",
+          "implement.md": "a0920bfa7e5f0ae5cc80b21d7157dd03b287febd72dacde41d3c79ba284b0456"
+        },
+        "execution_class": "planned",
+        "delivery_mode": "change_bearing",
+        "sealed_at": "2026-10-19T14:44:58.284737+00:00"
+      },
+      "approved_revision": 1,
+      "approval_basis": "用户明确批准根任务完整方案，其中包含本 CodeGraph main 合并与正式发行子方案",
+      "approved_at": "2026-10-19T14:45:04.335617+00:00"
+    }
+  }
+}

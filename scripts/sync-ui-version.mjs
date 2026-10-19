@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Keep `@colbymchenry/codegraph-ui` on the engine's version number.
+ * Keep `@pennixrv/codegraph-ui` on the engine's version number.
  *
  * The component package draws its screens from the engine's own JSON API, and
  * that API is versioned with the binary that serves it — a payload field can
  * appear or change shape in any engine release. So the two ship as one number:
- * `@colbymchenry/codegraph-ui@1.6.0` is the reader for `codegraph@1.6.0`, and a
+ * `@pennixrv/codegraph-ui@1.6.0` is the reader for `codegraph@1.6.0`, and a
  * host can pin them together without a compatibility table.
  *
  * This SYNCS rather than asserts, deliberately. The documented release flow is

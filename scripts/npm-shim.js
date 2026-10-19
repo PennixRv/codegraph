@@ -4,7 +4,7 @@
 // npm thin-installer launcher for CodeGraph.
 //
 // The heavy artifact (a vendored Node runtime + the app) ships as a per-platform
-// optionalDependency: @colbymchenry/codegraph-<platform>-<arch>. npm installs
+// optionalDependency: @pennixrv/codegraph-<platform>-<arch>. npm installs
 // only the one matching the host, via each package's `os`/`cpu` fields (the
 // esbuild pattern). This shim — run by the user's OWN Node — locates that bundle
 // and execs its launcher, so the real work always runs on the bundled Node 24
@@ -32,9 +32,9 @@ var os = require('os');
 var path = require('path');
 
 var target = process.platform + '-' + process.arch; // e.g. darwin-arm64, linux-x64
-var pkg = '@colbymchenry/codegraph-' + target;
+var pkg = '@pennixrv/codegraph-' + target;
 var isWindows = process.platform === 'win32';
-var REPO = 'colbymchenry/codegraph';
+var REPO = 'PennixRv/codegraph';
 
 main().catch(function (e) {
   process.stderr.write('codegraph: ' + (e && e.message ? e.message : String(e)) + '\n');
@@ -42,6 +42,7 @@ main().catch(function (e) {
 });
 
 async function main() {
+  if (target !== 'linux-x64') throw new Error('The Pennix fork supports Linux x64 only.');
   // Happy path: the npm-installed optional dependency. Fall back to a download
   // when the registry didn't deliver it.
   var resolved = resolveInstalledBundle() || (await selfHealBundle());
@@ -271,7 +272,7 @@ function fail(reason) {
     'A registry mirror (e.g. npmmirror/cnpm) that did not mirror the per-platform\n' +
     'package is the usual cause. Fixes:\n' +
     '  - install from the official registry:\n' +
-    '      npm i -g @colbymchenry/codegraph --registry=https://registry.npmjs.org\n' +
+    '      npm i -g @pennixrv/codegraph --registry=https://registry.npmjs.org\n' +
     '  - or use the standalone installer (no Node required):\n' +
     '      curl -fsSL https://raw.githubusercontent.com/' + REPO + '/main/install.sh | sh\n'
   );

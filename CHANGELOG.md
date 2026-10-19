@@ -145,6 +145,18 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In React and Vue, a tag for a component the file imports from a package, like `<Button>` from antd, `<Typography>` from `@mui/material/Typography`, `<Link>` from react-router-dom or `<Card>` from ant-design-vue, no longer links to a component, function or class in your repository that only shares its name. Before, the tag linked to whatever the repository had by that name, so `codegraph_explore`, callers and impact followed renders that never happen: in SigNoz, antd's `<Button>` tags showed up as callers of a styled link on its 404 page, and in Material UI dashboards like mantis and berry, `<Typography>` and `<Button>` tags showed up as callers of the theme's style overrides. A package here is one that a `package.json` above the file lists and that no file in the repository answers to. A tag imported through a path alias like `components/Modal`, from a workspace package of the repository, or under a name no `package.json` lists still links as before. Re-index React and Vue projects after upgrading.
 - In React with TypeScript, a component that renders a generic component and passes it type arguments, like outline's `<PaginatedList<Document> items={…} />` or excalidraw's `<DropdownMenuItemContentRadio<"contain" | "overlap"> …>`, now links to the component it renders. Before, a tag followed by type arguments was skipped, so the generic component looked unused by the screens that render it, and `codegraph_explore`'s call paths, callers and impact stopped short of it. Re-index React projects after upgrading.
 
+## [1.6.2-pennix.1] - 2026-10-14
+
+### Highlights
+
+- Pennix fork 仅发布 Linux x64，安装入口为 `npm install -g @pennixrv/codegraph`。
+- Codex 和 OpenCode 的全局安装、刷新与卸载保留用户级 `AGENTS.md`，项目短块仍由显式本地安装管理。
+
+### Fixes
+
+- 项目规则中的重复、缺失或逆序标记以及符号链接会阻止不安全写入，块外正文保持原样。
+- Codex 和 OpenCode 共用项目短块时，只有最后一个消费者卸载才移除该块；消费者状态不明确时保留。
+
 ## [1.6.2] - 2026-10-03
 
 ### Highlights
@@ -1449,3 +1461,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.0]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.0
 [1.6.1]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.1
 [1.6.2]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.2
+[1.6.2-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.1

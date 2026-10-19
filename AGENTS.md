@@ -2,13 +2,15 @@
 
 Canonical project guidance for coding agents working in this repository (Codex/Astra, Claude Code via `@AGENTS.md`, Cursor, etc.).
 
+Pennix fork scope: base `v1.6.2`, Linux x64 only, npm `@pennixrv/codegraph` and `@pennixrv/codegraph-linux-x64`. Global Codex/OpenCode operations preserve user AGENTS byte for byte. Explicit local installs own only the project short block; native MCP instructions remain the protocol authority. Other host behavior is compatibility only. Release and source changes follow the active Trellis task; a user's explicit publishing authorization takes precedence over the inherited manual handoff instruction below.
+
 **Codex size note:** root `AGENTS.md` is intentionally kept near ~35 KiB (critical build/test/arch/retrieval rules retained). Longer validation methodology + the Excalidraw worked example live in `docs/AGENTS.md`. This environment sets `project_doc_max_bytes = 49152` so root (and root+`docs/` when cwd is under `docs/`) are not silently truncated at the 32 KiB default.
 
 ## Project Overview
 
 CodeGraph is a local-first code intelligence library + CLI + MCP server. It parses any supported codebase with tree-sitter, stores symbols/edges/files in SQLite (FTS5), and exposes a knowledge graph to AI agents (Claude Code, Cursor, Codex CLI, opencode) over MCP. Per-project data lives in `.codegraph/`. Extraction is deterministic — derived from AST, not LLM-summarized.
 
-Distributed as `@colbymchenry/codegraph` on npm; same binary serves as installer, indexer, and MCP server.
+Distributed by this fork as `@pennixrv/codegraph` on npm; same binary serves as installer, indexer, and MCP server.
 
 ## Build, Test, Run
 
@@ -107,7 +109,7 @@ Defined in `src/types.ts`. Both extractors and resolvers must use these exact st
 - Current targets: `claude.ts`, `cursor.ts`, `codex.ts`, `opencode.ts`.
 - `targets/toml.ts` is a hand-rolled TOML serializer scoped to `[mcp_servers.codegraph]` (used by Codex). Sibling tables and `[[array_of_tables]]` are preserved verbatim. No new dependency.
 - opencode reads `opencode.jsonc` by default; the installer prefers existing `.jsonc`, falls back to `.json`, and creates `.jsonc` for greenfield installs. Edits are surgical via `jsonc-parser` so user comments and formatting survive install/re-install/uninstall round-trips. The MCP entry is OpenCode 2's native `mcp.servers.codegraph` with `disabled: false` and `codemode: false` (so `codegraph_explore` stays on the native tool list); a pre-#1698 `mcp.codegraph` + `enabled` entry is migrated on re-install and removed by uninstall.
-- `instructions-template.ts` no longer holds an instructions body — it exports only the `<!-- CODEGRAPH_START -->`/`<!-- CODEGRAPH_END -->` markers. The installer **stopped writing** a `## CodeGraph` block into each agent's instructions file (`CLAUDE.md` / `~/.codex/AGENTS.md` / `~/.config/opencode/AGENTS.md` / `~/.gemini/GEMINI.md` / `.cursor/rules/codegraph.mdc` / Kiro steering doc) because it duplicated the MCP `initialize` instructions verbatim (issue #529). Each target's `install` (self-heal on upgrade) and `uninstall` use the markers to **strip** a block a previous install left behind. `server-instructions.ts` is the single source of truth for agent-facing guidance.
+- `instructions-template.ts` holds a short navigation block for project/subagent audiences. Codex and OpenCode write it only for explicit local installs and share ownership of project AGENTS. Their global install/refresh/uninstall never mutate user AGENTS. Other hosts retain upstream compatibility. `server-instructions.ts` is the protocol authority; do not duplicate its playbook into the short block.
 - All installer changes need matching coverage in `__tests__/installer-targets.test.ts` — there are ~47 parameterized contract tests covering install idempotency, sibling preservation, uninstall reverses install, byte-equal re-runs returning `unchanged`, and partial-state recovery for Codex.
 
 ### Cursor MCP working-directory quirk
@@ -288,3 +290,14 @@ publish actions on shared state. Write the files, hand the user the commands.
   - The **current branch's tip** — your own unmerged work obviously can't be what the comment is reacting to.
   Always disambiguate "released," "merged-but-unreleased," and "in-progress" before agreeing that a user-reported problem is unfixed (or that a fix is incomplete). A user saying "your fix only covers X" about a recent PR is usually pointing at the *released* shortcomings — your in-flight branch may already address them but they have no way to know that.
 - **Version-tag every image referenced in `README.md`.** GitHub caches README images (`raw.githubusercontent.com` with a 5-minute TTL; third-party hosts sit behind the long-lived camo proxy), so updating an asset in place can keep showing the stale version. Give each README image URL a `?v=N` query tag and **bump `N` in the same commit whenever the asset bytes change** — e.g. `assets/waitlist.svg?v=2`. The changed URL sidesteps every cache so the new image shows immediately instead of waiting on a TTL to expire.
+
+<!-- TRELLIS:START -->
+# Trellis
+
+Follow `.trellis/workflow.md`; read the applicable `.trellis/spec/` guidance before editing code, and keep task facts in `.trellis/tasks/`. Project-scoped helpers live in `.agents/skills/`.
+
+When a live Trellis Channel wait returns a host continuation, resume only that continuation until it resolves, times out, or errors. Do not run another host action meanwhile, including another wait, shell command, or status/message query; use diagnostics only on demand after it returns.
+
+Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
+
+<!-- TRELLIS:END -->

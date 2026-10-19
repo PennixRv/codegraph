@@ -42,13 +42,10 @@ import {
 import {
   atomicWriteFileSync,
   getMcpServerConfig,
-  removeMarkedSection,
+  removeProjectInstructionsEntry,
+  validateProjectInstructionsFile,
   upsertInstructionsEntry,
 } from './shared';
-import {
-  CODEGRAPH_SECTION_END,
-  CODEGRAPH_SECTION_START,
-} from '../instructions-template';
 import { buildTomlTable, removeTomlTable, upsertTomlTable } from './toml';
 
 const TOML_HEADER = 'mcp_servers.codegraph';
@@ -114,19 +111,20 @@ class CodexTarget implements AgentTarget {
 
   install(loc: Location, _opts: InstallOptions): WriteResult {
     const files: WriteResult['files'] = [];
-
+    if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
     files.push(writeMcpEntry(loc));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
     // subagents and non-MCP harnesses read AGENTS.md but never the MCP
     // initialize instructions. Upsert self-heals a stale pre-#529 block.
-    files.push(upsertInstructionsEntry(instructionsPath(loc)));
+    if (loc === 'local') files.push(upsertInstructionsEntry(instructionsPath(loc)));
 
     return loc === 'local' ? { files, notes: [trustNote()] } : { files };
   }
 
   uninstall(loc: Location): WriteResult {
     const files: WriteResult['files'] = [];
+    if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
 
     const tomlPath = tomlConfigPath(loc);
     if (fs.existsSync(tomlPath)) {
@@ -146,7 +144,7 @@ class CodexTarget implements AgentTarget {
       files.push({ path: tomlPath, action: 'not-found' });
     }
 
-    files.push(removeInstructionsEntry(loc));
+    if (loc === 'local') files.push(removeProjectInstructionsEntry(instructionsPath(loc), this.id));
 
     return { files };
   }
@@ -157,7 +155,7 @@ class CodexTarget implements AgentTarget {
   }
 
   describePaths(loc: Location): string[] {
-    return [tomlConfigPath(loc), instructionsPath(loc)];
+    return loc === 'local' ? [tomlConfigPath(loc), instructionsPath(loc)] : [tomlConfigPath(loc)];
   }
 }
 
@@ -187,17 +185,6 @@ function writeMcpEntry(loc: Location): WriteResult['files'][number] {
   }
   atomicWriteFileSync(file, nextContent);
   return { path: file, action: created ? 'created' : 'updated' };
-}
-
-/**
- * Strip the marker-delimited CodeGraph block from this location's
- * AGENTS.md if a prior install wrote one. Used by both install
- * (self-heal on upgrade) and uninstall — see issue #529.
- */
-function removeInstructionsEntry(loc: Location): WriteResult['files'][number] {
-  const file = instructionsPath(loc);
-  const action = removeMarkedSection(file, CODEGRAPH_SECTION_START, CODEGRAPH_SECTION_END);
-  return { path: file, action };
 }
 
 export const codexTarget: AgentTarget = new CodexTarget();
