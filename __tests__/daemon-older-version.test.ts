@@ -57,6 +57,14 @@ describe('isOlderRelease', () => {
     expect(isOlderRelease('2.0.0', '1.99.99')).toBe(false);
   });
 
+  it('orders Pennix releases while keeping other prereleases incomparable', () => {
+    expect(isOlderRelease('1.6.1', '1.6.2-pennix.1')).toBe(true);
+    expect(isOlderRelease('1.6.2-pennix.1', '1.6.2-pennix.2')).toBe(true);
+    expect(isOlderRelease('1.6.2-pennix.2', '1.6.2-pennix.1')).toBe(false);
+    expect(isOlderRelease('1.6.2', '1.6.2-pennix.1')).toBe(false);
+    expect(isOlderRelease('1.6.1-beta.1', '1.6.2-pennix.1')).toBe(false);
+  });
+
   it('never calls a prerelease, a build or an unknown version older, in either position', () => {
     for (const odd of ['0.0.0-unknown', '0.0.0-mismatch', '1.6.1-beta.1', '1.6.1+local', 'v1.6.1', 'unknown', 'test', '', '1.6']) {
       expect(isOlderRelease(odd, '1.6.2'), odd).toBe(false);

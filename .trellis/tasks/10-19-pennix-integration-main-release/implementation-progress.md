@@ -2,20 +2,22 @@
 
 ## 已完成
 
-- 根任务的完整方案已获用户批准；本任务由 CodeGraph 原生 CLI 创建，Planning Seal revision 1 与批准记录完成，状态为 `in_progress`。
-- 初始远端复核通过：`origin/main=242862182bf4460a1551118d86fe5f47581ad5a4`，`origin/codex/pennix-integration=e34171f236dc3ad31c1a54ac51f1720372d82ec1`，与本地 refs 相同；任务候选 Release `v1.6.2-pennix.2` 当前 GitHub Release 未发现。
-- 只读评估确认 main 有 125 个独有提交，集成分支有 5 个独有提交，共同祖先为 `6560052a6f856855d3f71eee838fd66ccfa4285d`；四个共同修改文件的外部三方文本合并检查无冲突。此项不替代真实合并和回归验收。
-- 起始任务目录仅包含本任务文件；尚未修改 CodeGraph 产品源码、版本、标签、远端或发布资产。
+- CodeGraph 原生任务 `10-19-pennix-integration-main-release` 的 Planning Seal revision 1 已批准并启动，状态为 `in_progress`。用户批准依据来自根任务完整方案。普通合并后已通过原生 `task.py set-branch` 将当前任务分支绑定到 `main`。
+- 在 `main` 上完成普通合并，提交为 `611b504310e490b1ea43c8ede8fe7544af3ea424`，双亲分别为原 main tip `242862182bf4460a1551118d86fe5f47581ad5a4` 与集成分支 tip `e59b421576ff8a8bd25da70d4823374eaec44f99`。两侧历史均完整保留，原集成分支及远端分支未改写或删除。
+- 合并共纳入 177 个路径，Git 无冲突；共同修改的 `AGENTS.md`、`CHANGELOG.md`、`src/bin/codegraph.ts` 和 `src/mcp/tools.ts` 已审阅合并差异。`git diff --check` 报告两处新加入 Trellis 文档的行尾空格及一处 workspace journal 文件末尾空行，均为文档排版，不涉及产品源码。
+- 本地 `main` 当前为 `611b504310e490b1ea43c8ede8fe7544af3ea424`，比 `origin/main` 超前 7 个提交；`origin/codex/pennix-integration` 仍为 `e59b421576ff8a8bd25da70d4823374eaec44f99`。合并完成时工作树干净；任务记录更新后需再次提交。
+- 发布候选 `1.6.2-pennix.2` 尚未占用：Git tag 查询无结果，GitHub Release 返回 not found；两个 npm 包查询候选版本均为 404，而现有 `1.6.2-pennix.1` 与 dist-tag 可正常读取，已确认 npm registry 查询有效。
+- 构建机可用 Node `v24.16.0`，`cargo` 与 `rustc` 均为 `1.99.0`；仓库已有 `node_modules` 和 Linux x64 kernel 预构建文件。后者不是本次源码验证证据，必须先从当前 Rust 源码重新构建，再运行要求的 parity tests。
+- 首轮完整测试暴露真实集成缺陷：当前包版本为 `1.6.2-pennix.1`，而 `src/mcp/version.ts` 只把纯 `MAJOR.MINOR.PATCH` 当作可比较版本，导致 launcher 不会替换旧 daemon。已将版本解析收敛为仅额外接受本 fork 的 `-pennix.N` 后缀，保留其他 prerelease/build/unknown 不可比较的安全边界，并补充版本行为测试。原因是版本格式与 daemon 替换合同之间的集成缺口，不是测试环境负载问题。
+- 修复后的构建通过；定向 `daemon-older-version.test.ts` 通过 8 项（21 项按筛选跳过），包括旧 daemon 停止、不可探测旧 daemon 停止、更新会话只读接管和新版 daemon 不被停止的场景。
 
-## 当前工作树事实
+## 变更边界
 
-- 当前活动 task checkout 位于 `codex/pennix-integration`，任务 `base_branch=main`。main 分支尚无 `.trellis/`；集成分支包含该仓库的 Trellis 原生脚本与规划资产。
-- 为让组件任务记录进入最终 main，先将该任务目录作为单独文档提交在集成分支，再普通合并整个集成分支到 main；任务归档在合并后 main 的原生 Trellis 环境继续。保持原分支，不重写 refs。该方式仍须在切换/合并前核对工作区与远端。
-- 用户已明确要求 CodeGraph 后续统一维护 main，子任务之外的 lifecycle 适配、正式安装和本机 repair 仍由根任务后续阶段处理。
+- 本子任务的目标是把已批准的 Pennix 集成和 main 上的上游演进保留在受维护的 `main`，通过本机与 CI 质量门禁后发布 Linux x64 版本。版本更新范围按当前发布机制核对 `package.json`、lockfile、UI 包版本和 `CHANGELOG.md`；若测试揭示集成缺陷，只修复阻断该任务验收的根因并补齐相应回归验证。
+- 不在本子任务新增 CodeGraph 功能或扩大平台支持；不处理 lifecycle catalog / VERSION 适配、本机安装、`pennix repair codegraph-cli`、MCP 新进程验收或根仓库索引，这些属于根任务后续阶段。
 
-## 下一步
+## 当前状态与下一步
 
-1. 复核并提交本任务目录本身，不暂存其他路径。
-2. 切到 main，普通合并 `codex/pennix-integration`；审查实际合并结果和关键语义。
-3. 在最终 main 上恢复本任务上下文，进行兼容 Node 的完整测试和新 kernel parity，之后按 `workflow_dispatch` 发布。
-4. 记录每个阶段的提交、测试和发布证据；失败按设计中的停止/回退点处理。
+- 当前 checkout 为 `main`；本地 main 尚未推送。原 `codex/pennix-integration` 本地和远端引用均保留。
+- 先用 Node 24 重新执行完整 `npm test`，并复核源码 kernel 产物未被测试过程误用旧文件；全量门禁通过后再同步发布版本与变更说明、普通推送 main 并执行已批准的 `workflow_dispatch`。
+- 发行成功后回读 tag、GitHub Release、npm 包和 Actions 自动推回 main 的 changelog 提交，提交并推送任务归档记录；最终核对 `HEAD == origin/main`、工作树干净、原集成分支引用保留，再用 CodeGraph 原生 CLI 归档本任务。

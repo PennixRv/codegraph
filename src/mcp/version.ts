@@ -40,22 +40,29 @@ export const CodeGraphPackageVersion = readPackageVersion();
 
 /**
  * Whether `version` is a CodeGraph release older than `than` — the test a
- * launcher applies before it replaces a running daemon (#2335). Only plain
- * `MAJOR.MINOR.PATCH` releases compare: a prerelease, a build suffix or the
- * "0.0.0-unknown" sentinel is never older. A daemon is replaced only by a
- * strictly newer release, so two installed versions can never take turns
- * stopping each other's daemon.
+ * launcher applies before it replaces a running daemon (#2335). Stable
+ * `MAJOR.MINOR.PATCH` releases and this fork's `-pennix.N` releases compare;
+ * other prereleases, build suffixes and the "0.0.0-unknown" sentinel never do.
+ * A daemon is replaced only by a strictly newer release, so two installed
+ * versions can never take turns stopping each other's daemon.
  */
 export function isOlderRelease(version: string, than: string): boolean {
   const a = parseRelease(version);
   const b = parseRelease(than);
   if (!a || !b) return false;
-  if (a[0] !== b[0]) return a[0] < b[0];
-  if (a[1] !== b[1]) return a[1] < b[1];
-  return a[2] < b[2];
+  const [aMajor, aMinor, aPatch] = a.core;
+  const [bMajor, bMinor, bPatch] = b.core;
+  if (aMajor !== bMajor) return aMajor < bMajor;
+  if (aMinor !== bMinor) return aMinor < bMinor;
+  if (aPatch !== bPatch) return aPatch < bPatch;
+  return a.pennix !== null && b.pennix !== null && a.pennix < b.pennix;
 }
 
-function parseRelease(version: string): [number, number, number] | null {
-  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+function parseRelease(version: string): { core: [number, number, number]; pennix: number | null } | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-pennix\.(\d+))?$/.exec(version);
+  if (!m) return null;
+  return {
+    core: [Number(m[1]), Number(m[2]), Number(m[3])],
+    pennix: m[4] === undefined ? null : Number(m[4]),
+  };
 }
