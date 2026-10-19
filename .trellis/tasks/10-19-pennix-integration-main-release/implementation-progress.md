@@ -10,6 +10,10 @@
 - 构建机可用 Node `v24.16.0`，`cargo` 与 `rustc` 均为 `1.99.0`；仓库已有 `node_modules` 和 Linux x64 kernel 预构建文件。后者不是本次源码验证证据，必须先从当前 Rust 源码重新构建，再运行要求的 parity tests。
 - 首轮完整测试暴露真实集成缺陷：当前包版本为 `1.6.2-pennix.1`，而 `src/mcp/version.ts` 只把纯 `MAJOR.MINOR.PATCH` 当作可比较版本，导致 launcher 不会替换旧 daemon。已将版本解析收敛为仅额外接受本 fork 的 `-pennix.N` 后缀，保留其他 prerelease/build/unknown 不可比较的安全边界，并补充版本行为测试。原因是版本格式与 daemon 替换合同之间的集成缺口，不是测试环境负载问题。
 - 修复后的构建通过；定向 `daemon-older-version.test.ts` 通过 8 项（21 项按筛选跳过），包括旧 daemon 停止、不可探测旧 daemon 停止、更新会话只读接管和新版 daemon 不被停止的场景。
+- 发布候选已提升为 `1.6.2-pennix.2`，`package.json`、`ui/package.json` 与 lockfile 版本一致；CHANGELOG 已加入 daemon 升级修复说明。npm registry 当前仍返回两个候选包均未发布（404）。
+- 对候选版本重新执行 `npm ci` 成功（183 packages）；npm 报告 13 项依赖审计告警（5 moderate、6 high、2 critical），本任务未批准依赖升级且不以其为本次发布门槛。Node 24 下 `npm run build` 与 UI/wasm 资源完整性检查通过。
+- 候选版本全量 `CODEGRAPH_KERNEL_EXPECT=1 npm test` 通过：570 个测试文件通过，7,112 项通过、34 项跳过（总计 7,146）。
+- Linux x64 Rust kernel 已从当前源码重建；强制 parity 套件 17 个文件、296 项测试全部通过。`npm pack --dry-run --json` 确认 shim 包版本 `1.6.2-pennix.2`、1,263 个文件且包含修复后的 `dist/mcp/version.js`，不包含测试文件。
 
 ## 变更边界
 
