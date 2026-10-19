@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **活动文件（Active File）**: `journal-1.md`
-- **会话总数（Total Sessions）**: 0
-- **最近活动（Last Active）**: -
+- **会话总数（Total Sessions）**: 1
+- **最近活动（Last Active）**: 2026-10-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | 文件（File） | 行数（Lines） | 状态（Status） |
 |------|-------|--------|
-| `journal-1.md` | ~0 | 活动（Active） |
+| `journal-1.md` | ~43 | 活动（Active） |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | 日期（Date） | 标题（Title） | 提交（Commits） | 分支（Branch） |
 |---|------|-------|---------|--------|
+| 1 | 2026-10-20 | 完成 CodeGraph main 合入与 Linux x64 发布 | `18214c57` | `main` |
 <!-- @@@/auto:session-history -->
 
 ---
