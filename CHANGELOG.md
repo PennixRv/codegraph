@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.2] - 2026-10-19
+
 ### Fixes
 
 - Upgrading between Pennix releases now replaces an older CodeGraph daemon with the current one, so a running session cannot keep the previous install's parser files in charge of the project.
@@ -1463,3 +1466,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.1]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.1
 [1.6.2]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.2
 [1.6.2-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.1
+[1.6.2-pennix.2]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.2
