@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/10-19-pennix-integration-main-release/prd.md", "reason": "以 PRD 验收标准确认合并、构建测试、正式发布与归档证据"}
+{"file": ".trellis/tasks/10-19-pennix-integration-main-release/design.md", "reason": "核对发布停止点、真实资产来源、远端同步和任务边界"}

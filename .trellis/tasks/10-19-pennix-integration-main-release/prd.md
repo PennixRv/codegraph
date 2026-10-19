@@ -15,11 +15,11 @@
 
 ## 验收标准（Acceptance Criteria）
 
-- [ ] 合并前的 main 与集成分支 tip 均可从最终 main 到达；两侧既有独特功能和测试保留，普通提交历史完整。
-- [ ] Node 24 下构建、完整 `npm test`、新建 Linux kernel 与 `CODEGRAPH_KERNEL_EXPECT=1` parity 通过，发布打包检查通过。
-- [ ] `v1.6.2-pennix.2` GitHub Release、Linux x64 资产摘要/provenance、`@pennixrv/codegraph` shim 和 `@pennixrv/codegraph-linux-x64` 平台包均可回读并对应到经验证源码。
-- [ ] Actions 产生的 main 提交、CodeGraph 任务收尾提交均已保留并推送；最终本地 main 与实时 `origin/main` 一致且工作树干净。
-- [ ] 本任务记录发布源码提交、tag、workflow run、资产校验和限制；完成 CodeGraph 原生 task 归档。
+- [x] 合并前的 main 与集成分支 tip 均可从最终 main 到达；两侧既有独特功能和测试保留，普通提交历史完整。
+- [x] Node 24 下构建、完整 `npm test`、新建 Linux kernel 与 `CODEGRAPH_KERNEL_EXPECT=1` parity 通过，发布打包检查通过。
+- [x] `v1.6.2-pennix.2` GitHub Release、Linux x64 资产摘要/provenance、`@pennixrv/codegraph` shim 和 `@pennixrv/codegraph-linux-x64` 平台包均可回读并对应到经验证源码。
+- [x] Actions 产生的 main 提交、CodeGraph 任务收尾提交均已保留并推送；任务归档与日志提交完成后，最终本地 main 与实时 `origin/main` 一致且工作树干净。
+- [x] 本任务记录发布源码提交、tag、workflow run、资产校验和限制；完成 CodeGraph 原生 task 归档。
 
 ## 备注（Notes）
 
