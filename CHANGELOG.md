@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.3] - 2026-10-21
+
 ### Highlights
 
 - Code search now distinguishes the source spans it returned from an entire file, while preserving full-file reading and verification when required.
@@ -19,7 +22,6 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixes
 
 - `codegraph_explore` no longer treats a file name or selected symbol body as proof that an agent has read the whole file, and its continuation notes agree with the server's verification guidance.
-
 
 ## [1.6.2-pennix.2] - 2026-10-19
 
@@ -1475,3 +1477,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.2
 [1.6.2-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.1
 [1.6.2-pennix.2]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.2
+[1.6.2-pennix.3]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.3
