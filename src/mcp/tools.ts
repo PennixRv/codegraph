@@ -1146,9 +1146,9 @@ function pointerLineFor(filePath: string, nodes: readonly Node[]): string {
  * Emitted when the response was too full to carry ANY of its pointer list. It
  * is the one line the epilogue floor is reserved for: the list itself can be
  * traded away, but the agent must still be told that an uncovered area exists
- * and that another explore — not a Read — is how to reach it.
+ * and that another explore can reach missing symbols without re-reading delivered spans.
  */
-const EPILOGUE_LOST_NOTE = '> (Trailing pointer list omitted for size. The source above is complete and verbatim — treat it as already Read. For anything this call did not cover, run another codegraph_explore with the specific names rather than reading those files.)';
+const EPILOGUE_LOST_NOTE = '> (Trailing pointer list omitted for size. Selected symbol source above is complete and verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)';
 /**
  * The notes that stand in for the epilogue, or close a truncated response, in
  * two wordings each. `complete` says the source above is complete; `trimmed` is
@@ -1161,15 +1161,15 @@ const EPILOGUE_LOST_NOTE = '> (Trailing pointer list omitted for size. The sourc
 export const EXPLORE_FALLBACK_NOTES = {
   lost: {
     complete: EPILOGUE_LOST_NOTE,
-    trimmed: '> (Trailing pointer list omitted for size. The source above is verbatim — treat it as already Read. For symbols its gap markers name, and anything else not covered, run another codegraph_explore with those names rather than reading.)',
+    trimmed: '> (Trailing pointer list omitted for size. Source spans above are verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)',
   },
   cut: {
-    complete: '\n\n> (Trailing notes omitted for size. The source above is complete and verbatim — treat it as already Read. For anything this call did not cover, run another codegraph_explore with the specific names rather than reading those files.)',
-    trimmed: '\n\n> (Trailing notes omitted for size. The source above is verbatim — treat it as already Read. For symbols its gap markers name, and anything else not covered, run another codegraph_explore with those names rather than reading.)',
+    complete: '\n\n> (Trailing notes omitted for size. Selected symbol source above is complete and verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)',
+    trimmed: '\n\n> (Trailing notes omitted for size. Source spans above are verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)',
   },
   truncated: {
-    complete: '\n\n... (output truncated to budget; the source above is complete and verbatim — treat it as already Read. For any area not covered, run another codegraph_explore with the specific names — do NOT Read these files.)',
-    trimmed: '\n\n... (output truncated to budget; the source above is verbatim — treat it as already Read. For names its gap markers list, or any area not covered, run another codegraph_explore — do NOT Read these files.)',
+    complete: '\n\n... (output truncated to budget; selected symbol source above is complete and verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)',
+    trimmed: '\n\n... (output truncated to budget; source spans above are verbatim — treat it as already Read. Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.)',
   },
 } as const;
 
@@ -1273,8 +1273,8 @@ export function shortestUniqueSuffixes(paths: ReadonlyArray<string>): Map<string
  * deliver. Otherwise the note keeps the guarantee that is still true (every
  * block shown is verbatim; treat it as already Read), names the trimmed files
  * and the most relevant elided symbols as room allows, and sends the agent to
- * another codegraph_explore for them. It never offers Read: explore output must
- * not tell the agent to Read (AGENTS.md).
+ * another codegraph_explore for them. Reuse applies to delivered spans only;
+ * required full-file reads and correctness verification remain allowed.
  */
 export function exploreCompletenessNotes(
   filesIncluded: number,
@@ -1287,7 +1287,7 @@ export function exploreCompletenessNotes(
   const files = filesIncluded === 0 ? 'these files'
     : filesIncluded === 1 ? '1 file' : `${filesIncluded} files`;
   if (trimmed.length === 0) {
-    return [`> **Complete source for ${files} is included above — do NOT re-read them.** If your question also needs files/symbols listed under "Not shown above" (or any area this call didn't cover), make ANOTHER codegraph_explore targeting those names — it returns the same source with line numbers and is cheaper and more complete than reading.`];
+    return [`> **Complete selected-symbol source for ${files} is included above — reuse those spans.** Query codegraph_explore by name for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.`];
   }
   const label = shortestUniqueSuffixes([...knownPaths, ...trimmed.map((t) => t.filePath)]);
   const shownFiles = trimmed.slice(0, TRIMMED_FILES_NAMED).map((t) => `\`${label.get(t.filePath)}\``);
@@ -1302,9 +1302,9 @@ export function exploreCompletenessNotes(
       if (!names.includes(name)) names.push(name);
     }
   }
-  const head = `> **Verbatim source for ${files} is included above — treat it as already Read.**`;
+  const head = `> **Verbatim source sections for ${files} are included above — treat it as already Read.**`;
   const what = 'gap markers and file headers name what was elided';
-  const tail = 'For those, or anything under "Not shown above", make ANOTHER codegraph_explore with those exact names instead of reading the files — it returns their source with line numbers.';
+  const tail = 'Query codegraph_explore for missing symbols. Omitted text is unread; required full-file reads or verification may use local source tools.';
   const withFiles = `${head} Trimmed for size: ${trimmedList}; ${what}`;
   const candidates = names.length > 0
     ? [`${withFiles} (e.g. ${names.map((n) => `\`${n}\``).join(', ')}). ${tail}`]
@@ -5235,7 +5235,7 @@ export class ToolHandler {
     // Recorded so the drift pass below (#1474) can append a per-file exception
     // to this guarantee after the render loop knows which files drifted.
     const verbatimHeaderIdx = lines.length;
-    lines.push('> The code below is the **verbatim, current on-disk source** of these files — re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.');
+    lines.push('> The code below contains **verbatim, current on-disk source** spans, re-read on this call and line-numbered. Reuse the delivered spans as already Read; file names do not imply whole-file coverage. Gap markers and signatures omit text. Query codegraph_explore for missing symbols; required full-file reads and verification may use local source tools.');
     lines.push('');
 
     // The response's absolute cap. It MUST stay under the host's inline
@@ -6127,15 +6127,10 @@ export class ToolHandler {
         if (skel.length > 0) {
           const names = [...new Set(group.nodes.filter(isListedSymbol).map(n => n.name))]
             .slice(0, budget.maxSymbolsInFileHeader).join(', ');
-          // Steer the agent to codegraph_explore for an elided body — NEVER to
-          // Read. The old "Read for more" / "Read for a full body" tags invited
-          // a Read of the very file just skeletonized; on a central, wanted file
-          // (Session.swift, DataRequest.swift) that fired an over-investigation
-          // spiral (the agent Read the skeletonized file, then kept digging).
-          // CLAUDE.md: explore output must never tell the agent to Read.
+          // Missing bodies have precise explore targets; the shared header preserves required full-file reads.
           const tag = bodyIds.size + bodyWindows.size > 0
-            ? 'focused (the methods you named in full, the rest as signatures — codegraph_explore a signature by name for its body; do NOT Read)'
-            : 'skeleton (signatures only — codegraph_explore a name for its full body; do NOT Read)';
+            ? 'focused (the methods you named in full, the rest as signatures — codegraph_explore a signature by name for its body)'
+            : 'skeleton (signatures only — codegraph_explore a name for its full body)';
           // Dedup runs on the per-symbol parts, so a body the agent already has
           // becomes a pointer while the signature map around it survives intact
           // (a one-line signature is far under MIN_COVERED_LINES and is never

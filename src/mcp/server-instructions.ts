@@ -41,14 +41,17 @@ a blast-radius summary of what depends on them.
 
 For architecture, callers, impact or a flow, \`codegraph_explore\` can return
 relevant source and relationships together. Exact text, configuration, ordinary
-file operations and verification still follow the host's native local tools.
+file operations and verification follow the host's chosen local execution tools;
+native MCP calls keep their host interface rather than being forwarded by an executor.
+Reuse delivered current-source spans. File names, gap markers and signatures do
+not prove whole-file reading; required full-file reads must obtain all text.
 
 ## How to query
 
 - **Architecture, callers, impact or a flow** → \`codegraph_explore\` with the relevant names or short code terms. A capped call returns source grouped by file and the relationships among matches.
 - **"How does X reach/become Y? / the flow / the path from X to Y"** → \`codegraph_explore\`, naming the symbols that span the flow (e.g. \`mutateElement renderScene\`) — it surfaces the call path among them, riding dynamic-dispatch hops, and returns their source.
 - **Structural context for a known file or symbol** → use its name or file path to obtain source, call paths and dependents. Overloaded names may return several definitions; resolve ambiguity before editing.
-- **Need more?** Narrow the query or use the host's local tools for a missing detail. Reuse unchanged source already available in the current context; correctness checks remain necessary.
+- **Need more?** Query missing symbols by name, or use the host's local tools for missing detail, mandatory full-file reading or verification. Reuse unchanged source already available in the current context; correctness checks remain necessary.
 - Qualified symbol names accept dots, \`::\`, or slashes, including containers whose names contain dots (for example, \`AppWeb.Format.group\`).
 - Named-symbol call paths require exact matches; partial or mistyped names are never silently substituted as flow endpoints. If a graph query reports a missing symbol with did-you-mean suggestions, query the suggested name explicitly.
 - Explore matches names and indexed code words lexically, not by meaning; an empty result reports word matches and may suggest indexed candidate names to retry with \`codegraph_explore\`.

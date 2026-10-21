@@ -95,10 +95,13 @@ describe('shortestUniqueSuffixes', () => {
 });
 
 describe('exploreCompletenessNotes', () => {
-  it('claims complete source only when nothing was trimmed, and never offers Read', () => {
+  it('limits completeness to selected symbols and preserves required full-file reading', () => {
     const notes = exploreCompletenessNotes(4, [], ['a.ts', 'b.ts']);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toContain('Complete source for 4 files');
+    expect(notes[0]).toContain('Complete selected-symbol source for 4 files');
+    expect(notes[0]).toContain('Omitted text is unread');
+    expect(notes[0]).toContain('required full-file reads or verification');
+    expect(notes[0]).not.toContain('do NOT re-read');
     expect(notes[0]).not.toMatch(OFFERS_READ);
   });
 
@@ -117,7 +120,7 @@ describe('exploreCompletenessNotes', () => {
     const notes = exploreCompletenessNotes(3, trimmed, ['src/vs/workbench/services/extensions/common/rpcProtocol.ts', 'src/a.ts']);
     for (const note of notes) {
       expect(note).not.toContain('Complete source');
-      expect(note).toContain('Verbatim source for 3 files');
+      expect(note).toContain('Verbatim source sections for 3 files');
       expect(note).toContain('treat it as already Read');
       expect(note).toContain('codegraph_explore');
       expect(note).not.toMatch(OFFERS_READ);
@@ -130,12 +133,12 @@ describe('exploreCompletenessNotes', () => {
 
   it('counts files in words that read right for one and for none', () => {
     const t = [{ filePath: 'a.ts', elided: [span('f', 1, 9, 9)] }];
-    expect(exploreCompletenessNotes(1, [], ['a.ts'])[0]).toContain('Complete source for 1 file is included');
-    expect(exploreCompletenessNotes(1, t, ['a.ts'])[0]).toContain('Verbatim source for 1 file is included');
+    expect(exploreCompletenessNotes(1, [], ['a.ts'])[0]).toContain('Complete selected-symbol source for 1 file is included');
+    expect(exploreCompletenessNotes(1, t, ['a.ts'])[0]).toContain('Verbatim source sections for 1 file are included');
     // Every section held from an earlier call: no "0 files" beside a note about what was shown.
     for (const note of exploreCompletenessNotes(0, t, ['a.ts'])) {
       expect(note).not.toMatch(/\b0 files?\b/);
-      expect(note).toContain('Verbatim source for these files');
+      expect(note).toContain('Verbatim source sections for these files');
     }
   });
 
@@ -318,8 +321,8 @@ describe('codegraph_explore — the note follows what the render cut', () => {
     expect(text).toContain('stepNext(acc)');
     expect(text).not.toContain('PIPELINE_TAIL_MARKER');
 
-    expect(text).not.toContain('Complete source for');
-    expect(text).toContain('Verbatim source for');
+    expect(text).not.toContain('Complete selected-symbol source for');
+    expect(text).toContain('Verbatim source sections for');
     expect(text).toContain('treat it as already Read');
     expect(text).toMatch(/Trimmed for size: `pipeline\.ts`|Some sections were trimmed for size/);
     expect(epilogueOf(text)).not.toMatch(OFFERS_READ);
@@ -335,8 +338,8 @@ describe('codegraph_explore — the note follows what the render cut', () => {
     const text = await explore('formatValue padValue', 1000);
     expect(text).toContain('src/format.ts');
     expect(text).toContain('src/pad.ts');
-    expect(text).toMatch(/Complete source for \d+ files is included above/);
-    expect(text).not.toContain('Verbatim source for');
+    expect(text).toMatch(/Complete selected-symbol source for \d+ files is included above/);
+    expect(text).not.toContain('Verbatim source sections for');
     expect(epilogueOf(text)).not.toMatch(OFFERS_READ);
   });
 
@@ -399,7 +402,7 @@ describe('codegraph_explore — a dedup remainder folded into the back-reference
       // source is in neither response.
       expect(second).toContain('Already sent earlier in this conversation');
       expect(second).not.toContain('tinyTail = ()');
-      expect(second).not.toContain('Complete source for');
+      expect(second).not.toContain('Complete selected-symbol source for');
       expect(second).toContain('Trimmed for size: `ledger.ts`');
     } finally {
       spy.mockRestore();

@@ -1,0 +1,53 @@
+{
+  "id": "code-search-routing-convergence",
+  "name": "code-search-routing-convergence",
+  "title": "Code retrieval routing convergence",
+  "description": "Implement the explicitly approved four-owner root plan: precise retrieval routing, external instruction loading, and complete formal delivery. Scope is the local owner only; root coordination task is code-search-routing-convergence.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "penn",
+  "assignee": "penn",
+  "createdAt": "2026-10-21",
+  "completedAt": null,
+  "branch": "main",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "execution_class": "planned",
+    "delivery_mode": "change_bearing",
+    "planning": {
+      "revision": 1,
+      "seal": {
+        "revision": 1,
+        "task_id": "code-search-routing-convergence",
+        "task_name": "10-21-code-search-routing-convergence",
+        "documents": [
+          "prd.md",
+          "design.md",
+          "implement.md"
+        ],
+        "document_digests": {
+          "prd.md": "2101deee616893aaf0be11433bf96bc3a72f55bbf6b3ede3ff2eb08d07fc28aa",
+          "design.md": "8e39dc8c46db774a1cd772abb78af9903e6339684c0d3d716fd15cb41636a1fb",
+          "implement.md": "025cfcccb1813c48cd5c2b58dfc4cf6389c4052d4871c16be2c1aafd3970fcd4"
+        },
+        "execution_class": "planned",
+        "delivery_mode": "change_bearing",
+        "sealed_at": "2026-10-21T00:51:22.006603+00:00"
+      },
+      "approved_revision": 1,
+      "approval_basis": "User explicitly approved the displayed four-owner root plan and unique completion stop; this task is its unchanged local-owner projection.",
+      "approved_at": "2026-10-21T00:51:22.062906+00:00"
+    }
+  }
+}

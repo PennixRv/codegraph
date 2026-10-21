@@ -1,7 +1,7 @@
 {
   "name": "@pennixrv/codegraph-ui",
   "private": true,
-  "version": "1.6.2-pennix.2",
+  "version": "1.6.2-pennix.3",
   "type": "module",
   "description": "The CodeGraph reader as Svelte components: Symbol view, Flow strip and architecture Map behind one data adapter.",
   "keywords": [
