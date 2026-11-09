@@ -29,9 +29,9 @@
 
 ## 验收标准（Acceptance Criteria）
 
-- [ ] A/B/C 同 HEAD 不同 dirty symbols 双向隔离与错树拒绝通过。
-- [ ] 缺索引、链接重定向、reset、watch、reopen、Codex 本地刷新测试通过。
-- [ ] 原生构建、相关回归与 Linux x64 bundled 发布安装核验通过；根任务负责组合接受。
+- [x] A/B/C 同 HEAD 不同 dirty symbols 双向隔离与错树拒绝通过。
+- [x] 缺索引、链接重定向、reset、watch、reopen、Codex 本地刷新测试通过。
+- [x] 原生构建、相关回归与 Linux x64 bundled 发布安装核验通过；根任务负责组合接受。
 
 ## 备注（Notes）
 
