@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.4] - 2026-11-09
+
 ### Added
 
 - Native opt-in MCP binding with `serve --mcp --bound-worktree PATH`: checkout, local index and source identity are checked on every query. Another checkout is refused even when it shares HEAD or a Git common directory.
@@ -20,7 +23,6 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Source scans and watchers exclude nested linked worktrees while retaining ordinary submodules. Bound queries never borrow an ancestor index or follow redirected index/source paths; reset and reopen keep each tree's own graph.
-
 
 ## [1.6.2-pennix.3] - 2026-10-21
 
@@ -1487,3 +1489,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.1
 [1.6.2-pennix.2]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.2
 [1.6.2-pennix.3]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.3
+[1.6.2-pennix.4]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.4
