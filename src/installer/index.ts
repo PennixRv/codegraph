@@ -61,6 +61,7 @@ function getVersion(): string {
 }
 
 export interface RunInstallerOptions {
+  boundWorktree?: string;
   /** Comma-separated target list, or `auto` / `all` / `none`. */
   target?: string;
   /** Skip the location prompt; use this value directly. */
@@ -84,6 +85,9 @@ export async function runInstaller(): Promise<void> {
 }
 
 export async function runInstallerWithOptions(opts: RunInstallerOptions): Promise<void> {
+  if (opts.boundWorktree && (opts.target !== 'codex' || opts.location !== 'local')) {
+    throw new Error('--bound-worktree requires --target codex --location local.');
+  }
   const clack = await importESM('@clack/prompts');
 
   clack.intro(`CodeGraph v${getVersion()}`);
@@ -241,7 +245,7 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       );
       continue;
     }
-    const result = target.install(location, { autoAllow, promptHook });
+    const result = target.install(location, { autoAllow, promptHook, boundWorktree: opts.boundWorktree });
     installedIds.push(target.id);
     for (const file of result.files) {
       if (file.action === 'created') sawCreated = true;

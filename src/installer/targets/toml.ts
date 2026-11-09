@@ -54,6 +54,12 @@ export function buildTomlTable(header: string, values: Record<string, string | s
   return `[${header}]\n${serializeTomlTableBody(values)}`;
 }
 
+/** Only reads a writer-owned table; sibling TOML remains opaque. */
+export function getTomlTable(fileContent: string, header: string): string | null {
+  const start = findHeaderIndex(fileContent, `[${header}]`);
+  return start < 0 ? null : fileContent.slice(start, findNextTableHeader(fileContent, start + header.length + 2));
+}
+
 /**
  * Insert or replace a top-level dotted-key TOML table block in the
  * given file content. Preserves all other content verbatim.

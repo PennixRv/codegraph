@@ -20,6 +20,91 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { getCodeGraphDir, isInitialized } from '../directory';
+import { PathRefusalError } from '../errors';
+
+/** A .git file with commondir is a linked checkout, unlike a normal submodule. */
+export function isLinkedWorktreeDirectory(dir: string): boolean {
+  try {
+    const gitFile = path.join(dir, '.git');
+    if (!fs.lstatSync(gitFile).isFile()) return false;
+    const gitdir = fs.readFileSync(gitFile, 'utf8').match(/^gitdir:\s*(.+)$/m)?.[1]?.trim();
+    return !!gitdir && fs.existsSync(path.resolve(dir, gitdir, 'commondir'));
+  } catch { return false; }
+}
+
+function contains(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`);
+}
+
+/** Shared scan/watch/read boundary. Ordinary submodules remain part of the tree. */
+export function isWorktreeSource(root: string, candidate: string, strict = false): boolean {
+  const base = realpath(root);
+  const logical = path.resolve(root, candidate);
+  if (!contains(path.resolve(root), logical)) return false;
+  const actual = realpath(logical);
+  if (strict && !contains(base, actual)) return false;
+  // Check both spellings: a symlink can hide a nested checkout or point to one outside root.
+  for (const target of new Set([logical, actual])) {
+    let dir = target;
+    try { if (!fs.statSync(dir).isDirectory()) dir = path.dirname(dir); } catch { dir = path.dirname(dir); }
+    while (dir !== base && dir !== path.resolve(root)) {
+      if (isLinkedWorktreeDirectory(dir)) return false;
+      const up = path.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  }
+  return true;
+}
+
+/** An opt-in MCP identity, independent of HEAD and Git's shared common directory. */
+export class BoundWorktree {
+  readonly root: string;
+  private readonly commonDir: string;
+
+  constructor(input: string) {
+    const canonical = fs.realpathSync(path.resolve(input));
+    const root = gitWorktreeRoot(canonical);
+    const common = gitCommonDir(canonical);
+    if (!root || !common) throw new PathRefusalError(`--bound-worktree requires an existing Git checkout: ${input}`);
+    this.root = root;
+    this.commonDir = common;
+    this.assertIndex();
+  }
+
+  assertProject(projectPath = this.root): void {
+    const candidate = path.resolve(projectPath);
+    if (!contains(this.root, candidate) || !isWorktreeSource(this.root, candidate, true)) {
+      throw new PathRefusalError(`CodeGraph is bound to worktree ${this.root}; refusing projectPath ${projectPath}.`);
+    }
+    this.assertIndex();
+  }
+
+  assertSources(files: readonly { path: string }[]): void {
+    for (const file of files) {
+      if (!isWorktreeSource(this.root, file.path, true)) {
+        throw new PathRefusalError(`Bound CodeGraph refuses source outside this checkout: ${file.path}. Run a local sync.`);
+      }
+    }
+  }
+
+  assertIndex(): void {
+    if (realpath(this.root) !== this.root || gitWorktreeRoot(this.root) !== this.root || gitCommonDir(this.root) !== this.commonDir) {
+      throw new PathRefusalError(`Bound CodeGraph checkout identity changed: ${this.root}. Restart with the intended worktree.`);
+    }
+    const index = getCodeGraphDir(this.root);
+    for (const target of [index, ...['codegraph.db', 'codegraph.db-wal', 'codegraph.db-shm', 'codegraph.lock', 'writer.pid'].map(f => path.join(index, f))]) {
+      if (realpath(target) !== target) throw new PathRefusalError(`Bound CodeGraph refuses redirected index path: ${target}`);
+    }
+  }
+
+  resolve(projectPath = this.root): string | null {
+    this.assertProject(projectPath);
+    return isInitialized(this.root) ? this.root : null;
+  }
+}
 
 /**
  * Absolute, symlink-resolved toplevel of the git working tree that `dir`
@@ -213,6 +298,8 @@ function realpath(p: string): string {
   try {
     return fs.realpathSync(path.resolve(p));
   } catch {
-    return path.resolve(p);
+    const absolute = path.resolve(p);
+    const parent = path.dirname(absolute);
+    return parent === absolute ? absolute : path.join(realpath(parent), path.basename(absolute));
   }
 }

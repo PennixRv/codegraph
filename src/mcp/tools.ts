@@ -31,6 +31,7 @@ import {
   worktreeMismatchNotice,
   type NestedRepository,
   type WorktreeIndexMismatch,
+  BoundWorktree,
 } from '../sync/worktree';
 import type { PendingFile } from '../sync';
 import type { Node, Edge, SearchResult, Subgraph, NodeKind } from '../types';
@@ -1965,7 +1966,7 @@ export class ToolHandler {
   // healthy, heavy reads leave the main loop free for the MCP transport.
   private queryPool: QueryPool | null = null;
 
-  constructor(private cg: CodeGraph | null) {}
+  constructor(private cg: CodeGraph | null, private boundWorktree?: BoundWorktree) {}
 
   /**
    * Engine-only: attach (or detach with null) the worker-thread query pool. The
@@ -2209,6 +2210,16 @@ export class ToolHandler {
    * similar to how git finds .git/ directories.
    */
   private getCodeGraph(projectPath?: string): CodeGraph {
+    if (this.boundWorktree) {
+      this.boundWorktree.assertProject(projectPath);
+      if (!this.boundWorktree.resolve()) throw new NotIndexedError(`No local index in bound worktree ${this.boundWorktree.root}. Prepare this checkout explicitly; ancestor indexes are unavailable.`);
+      const cg = this.cg;
+      if (!cg || !isSameIndexRoot(cg.getProjectRoot(), this.boundWorktree.root)) {
+        throw new NotIndexedError(`Bound worktree index is not open: ${this.boundWorktree.root}. Retry after local preparation.`);
+      }
+      this.boundWorktree.assertSources(cg.getFiles());
+      return this.freshen(cg);
+    }
     if (!projectPath) {
       if (!this.cg) {
         if (this.defaultOpenFailure) throw this.defaultOpenFailure;
@@ -2882,7 +2893,13 @@ export class ToolHandler {
       // caller passed session state.
       const result = this.takeExploreEmission(raw, sessionState);
       const withWorktree = this.withWorktreeNotice(result, args.projectPath as string | undefined);
-      return this.withStalenessNotice(withWorktree, args.projectPath as string | undefined);
+      const answer = this.withStalenessNotice(withWorktree, args.projectPath as string | undefined);
+      if (this.boundWorktree) {
+        this.boundWorktree.assertProject(args.projectPath as string | undefined);
+        this.boundWorktree.assertSources(project.getFiles());
+        answer.content.unshift({ type: 'text', text: `CodeGraph bound checkout/index/source: ${this.boundWorktree.root}` });
+      }
+      return answer;
     } catch (err) {
       // Expected condition, not a malfunction: answer as a SUCCESS so the
       // agent keeps trusting the toolset for projects that ARE indexed.

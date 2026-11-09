@@ -2207,8 +2207,9 @@ program
   .description('Start CodeGraph as an MCP server for AI assistants')
   .option('-p, --path <path>', 'Project path (optional for MCP mode, uses rootUri from client)')
   .option('--mcp', 'Run as MCP server (stdio transport)')
+  .option('--bound-worktree <path>', 'Bind MCP queries, index and source reads to one Git checkout')
   .option('--no-watch', 'Disable the file watcher (no auto-sync; useful on slow filesystems like WSL2 /mnt drives)')
-  .action(async (options: { path?: string; mcp?: boolean; watch?: boolean }) => {
+  .action(async (options: { path?: string; mcp?: boolean; watch?: boolean; boundWorktree?: string }) => {
     const projectPath = options.path ? resolveProjectPath(options.path) : undefined;
 
     // Commander sets watch=false when --no-watch is passed. Route it through
@@ -2237,7 +2238,8 @@ program
         }
         // Start MCP server - it handles initialization lazily based on rootUri from client
         const { MCPServer } = await import('../mcp/index');
-        const server = new MCPServer(projectPath);
+        const { BoundWorktree } = await import('../sync/worktree');
+        const server = new MCPServer(projectPath, options.boundWorktree ? new BoundWorktree(options.boundWorktree) : undefined);
         await server.start();
         // Server will run until terminated
       } else {
@@ -2696,6 +2698,7 @@ program
   .option('-i, --init', 'After wiring agents, also run `codegraph init` in the current directory — builds this project’s index, so install + index is one command (combine with --yes for an unattended bootstrap)')
   .option('--no-permissions', 'Skip writing the auto-allow permissions list (Claude Code only)')
   .option('--print-config <id>', 'Print MCP config snippet for the named agent and exit (no file writes)')
+  .option('--bound-worktree <path>', 'Bind a local Codex MCP configuration to this Git checkout')
   .option('--refresh', 'Rewrite what previous installs configured, for already-configured agents only (never adds new ones). Run automatically by `codegraph upgrade`')
   .action(async (opts: {
     target?: string;
@@ -2704,6 +2707,7 @@ program
     init?: boolean;
     permissions?: boolean;
     printConfig?: string;
+    boundWorktree?: string;
     refresh?: boolean;
   }) => {
     if (opts.printConfig) {
@@ -2774,6 +2778,7 @@ program
         location: opts.location as 'global' | 'local' | undefined,
         autoAllow,
         yes: opts.yes,
+        boundWorktree: opts.boundWorktree,
       });
     } catch (err) {
       error(err instanceof Error ? err.message : String(err));

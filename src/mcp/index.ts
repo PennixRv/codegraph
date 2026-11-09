@@ -38,6 +38,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn, StdioOptions } from 'child_process';
 import { resolveServerRoot, getCodeGraphDir } from '../directory';
+import { BoundWorktree } from '../sync/worktree';
 import { StdioTransport } from './transport';
 import { MCPEngine } from './engine';
 import { MCPSession } from './session';
@@ -422,8 +423,9 @@ export class MCPServer {
   /** Project root whose writer.pid we hold in direct mode (#1740); released on stop. */
   private writerLockRoot: string | null = null;
 
-  constructor(projectPath?: string) {
-    this.projectPath = projectPath || null;
+  constructor(projectPath?: string, private boundWorktree?: BoundWorktree) {
+    if (boundWorktree && projectPath) boundWorktree.assertProject(projectPath);
+    this.projectPath = boundWorktree?.root ?? projectPath ?? null;
   }
 
   /**
@@ -440,6 +442,7 @@ export class MCPServer {
    * mode — a misbehaving daemon must never block a session from starting.
    */
   async start(): Promise<void> {
+    if (this.boundWorktree) return this.startDirect('bound worktree');
     // Long-lived process (direct / proxy / daemon alike): flush buffered
     // telemetry opportunistically. Fire-and-forget + unref'd — adds nothing
     // to the handshake path and never keeps the process alive.
@@ -534,7 +537,7 @@ export class MCPServer {
 
     // #1740: refuse a second direct writer on an initialized project. Daemon
     // mode multiplexes clients; direct mode is single-writer-per-project.
-    const writerRoot = resolveDaemonRoot(this.projectPath);
+    const writerRoot = this.boundWorktree ? this.boundWorktree.resolve() : resolveDaemonRoot(this.projectPath);
     if (writerRoot) {
       assertNoRebuild(writerRoot);
       const writer = tryAcquireWriterLock(writerRoot, 'direct');
@@ -546,7 +549,7 @@ export class MCPServer {
       this.writerLockRoot = writerRoot;
     }
 
-    this.engine = new MCPEngine({ queryPool: true, queryPoolDefaultMax: DIRECT_QUERY_POOL_MAX });
+    this.engine = new MCPEngine({ queryPool: true, queryPoolDefaultMax: DIRECT_QUERY_POOL_MAX, boundWorktree: this.boundWorktree });
     const transport = new StdioTransport({ exitOnClose: false, onClose: () => { void this.stop(); } });
     this.session = new MCPSession(transport, this.engine, {
       explicitProjectPath: this.projectPath,

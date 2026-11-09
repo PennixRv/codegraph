@@ -62,6 +62,7 @@ export interface WriteResult {
 }
 
 export interface InstallOptions {
+  boundWorktree?: string;
   /**
    * Whether to write the agent's permissions / auto-allow surface
    * (Claude `settings.json`, others where applicable). When the

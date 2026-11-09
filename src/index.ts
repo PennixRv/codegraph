@@ -125,6 +125,7 @@ export interface OpenOptions {
 
   /** Whether to run in read-only mode */
   readOnly?: boolean;
+  strictWorktree?: boolean;
 }
 
 /**
@@ -173,7 +174,8 @@ export class CodeGraph {
   private constructor(
     db: DatabaseConnection,
     queries: QueryBuilder,
-    projectRoot: string
+    projectRoot: string,
+    private strictWorktree = false
   ) {
     this.db = db;
     this.queries = queries;
@@ -231,7 +233,7 @@ export class CodeGraph {
       }
     });
 
-    this.orchestrator = new ExtractionOrchestrator(this.projectRoot, this.queries);
+    this.orchestrator = new ExtractionOrchestrator(this.projectRoot, this.queries, this.strictWorktree);
     this.resolver = createResolver(this.projectRoot, this.queries);
     this.graphManager = new GraphQueryManager(this.queries);
     this.traverser = new GraphTraverser(this.queries);
@@ -395,7 +397,7 @@ export class CodeGraph {
     const db = DatabaseConnection.open(dbPath, { readOnly: options.readOnly });
     const queries = new QueryBuilder(db.getDb());
 
-    const instance = new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot, options.strictWorktree);
 
     // Sync if requested
     if (options.sync && !options.readOnly) {
@@ -461,7 +463,7 @@ export class CodeGraph {
   /**
    * Open synchronously (without sync)
    */
-  static openSync(projectRoot: string, options: Pick<OpenOptions, 'readOnly'> = {}): CodeGraph {
+  static openSync(projectRoot: string, options: Pick<OpenOptions, 'readOnly' | 'strictWorktree'> = {}): CodeGraph {
     const resolvedRoot = path.resolve(projectRoot);
 
     // Check if initialized
@@ -480,7 +482,7 @@ export class CodeGraph {
     const db = DatabaseConnection.open(dbPath, { readOnly: options.readOnly });
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    return new CodeGraph(db, queries, resolvedRoot, options.strictWorktree);
   }
 
   /**
@@ -1358,7 +1360,7 @@ export class CodeGraph {
         const filesChanged = result.filesAdded + result.filesModified + result.filesRemoved;
         return { filesChanged, durationMs: result.durationMs };
       },
-      options,
+      { ...options, strictWorktree: this.strictWorktree },
       process.platform === 'win32'
         ? (filePath) => this.isIndexedFileStateCurrent(filePath)
         : undefined

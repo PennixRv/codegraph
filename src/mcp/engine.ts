@@ -20,6 +20,7 @@ import { assertNoRebuild, releaseWriterLock, tryAcquireWriterLock, writerLockHel
 import { QueryPool, resolvePoolSize } from './query-pool';
 import { endFreshnessMeasurements } from './index-freshness';
 import { acquireProject, ProjectLease } from './project-lifecycle';
+import { BoundWorktree } from '../sync/worktree';
 
 // Lazy-load the heavy CodeGraph chain (sqlite + query/graph/context layers) OFF
 // the MCP startup path. It's only needed once a tool actually opens a project —
@@ -34,6 +35,7 @@ const loadCodeGraph = (): typeof import('../index').default =>
 const RETRY_SUBSCAN_TTL_MS = 5_000;
 
 export interface MCPEngineOptions {
+  boundWorktree?: BoundWorktree;
   /** Serve existing index contents without syncing, watching, or claiming a writer slot. */
   readOnly?: boolean;
   /**
@@ -86,7 +88,7 @@ export class MCPEngine {
   // Retained synchronization ownership for each cached explicit project.
   private explicitProjects = new Map<CodeGraph, ProjectLease>();
   private defaultLease: ProjectLease | null = null;
-  private opts: Required<Omit<MCPEngineOptions, 'writerLockRoot' | 'queryPoolDefaultMax'>> & Pick<MCPEngineOptions, 'queryPoolDefaultMax'>;
+  private opts: Required<Omit<MCPEngineOptions, 'writerLockRoot' | 'queryPoolDefaultMax' | 'boundWorktree'>> & Pick<MCPEngineOptions, 'queryPoolDefaultMax' | 'boundWorktree'>;
   private closed = false;
   private stopPromise: Promise<void> | null = null;
   // Off-loop read-tool pool. Workers each hold their own WAL read connections;
@@ -94,8 +96,8 @@ export class MCPEngine {
   private queryPool: QueryPool | null = null;
 
   constructor(opts: MCPEngineOptions = {}) {
-    this.opts = { readOnly: opts.readOnly ?? false, watch: opts.watch ?? true, queryPool: opts.queryPool ?? false, queryPoolDefaultMax: opts.queryPoolDefaultMax };
-    this.toolHandler = new ToolHandler(null);
+    this.opts = { readOnly: opts.readOnly ?? false, watch: opts.watch ?? true, queryPool: opts.boundWorktree ? false : opts.queryPool ?? false, queryPoolDefaultMax: opts.queryPoolDefaultMax, boundWorktree: opts.boundWorktree };
+    this.toolHandler = new ToolHandler(null, opts.boundWorktree);
     this.toolHandler.setProjectLifecycle({
       open: (root, open) => {
         // Explicit projects and read-only fallbacks also hold SQLite handles.
@@ -231,7 +233,7 @@ export class MCPEngine {
     // down-scan is throttled so the persistent no-default state doesn't pay a
     // directory walk on every tool call; the up-walk always runs.
     const scanDue = Date.now() - this.lastRetrySubScanAt >= RETRY_SUBSCAN_TTL_MS;
-    const res = resolveServerRoot(searchFrom, { subprojectScan: scanDue });
+    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false } : resolveServerRoot(searchFrom, { subprojectScan: scanDue });
     if (scanDue) {
       this.lastRetrySubScanAt = Date.now();
       if (!res.root) this.toolHandler.setKnownSubprojects(res.candidates, searchFrom);
@@ -246,7 +248,7 @@ export class MCPEngine {
         this.cg = null;
       }
       assertNoRebuild(resolvedRoot);
-      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly });
+      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly, strictWorktree: !!this.opts.boundWorktree });
       this.projectPath = resolvedRoot;
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
@@ -349,7 +351,7 @@ export class MCPEngine {
     // several candidates → no default project, but SAY so (#1607): the silent
     // variant of this state read as "CodeGraph is broken" and was diagnosable
     // only by knowing to look for a missing ~/.codegraph/daemons/ entry.
-    const res = resolveServerRoot(searchFrom);
+    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false } : resolveServerRoot(searchFrom);
     const resolvedRoot = res.root;
     if (!resolvedRoot) {
       // Sessions may still discover a project later via roots/list, and the
@@ -374,7 +376,7 @@ export class MCPEngine {
     this.projectPath = resolvedRoot;
     try {
       assertNoRebuild(resolvedRoot);
-      const opened = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly });
+      const opened = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly, strictWorktree: !!this.opts.boundWorktree });
       if (this.closed) { opened.close(); return; }
       this.cg = opened;
       this.toolHandler.setDefaultCodeGraph(this.cg);

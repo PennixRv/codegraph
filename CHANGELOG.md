@@ -12,6 +12,15 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Native opt-in MCP binding with `serve --mcp --bound-worktree PATH`: checkout, local index and source identity are checked on every query. Another checkout is refused even when it shares HEAD or a Git common directory.
+- Codex local installation can persist the same worktree binding across refreshes without changing user-global AGENTS.
+
+### Fixed
+
+- Source scans and watchers exclude nested linked worktrees while retaining ordinary submodules. Bound queries never borrow an ancestor index or follow redirected index/source paths; reset and reopen keep each tree's own graph.
+
 
 ## [1.6.2-pennix.3] - 2026-10-21
 

@@ -46,7 +46,8 @@ import {
   validateProjectInstructionsFile,
   upsertInstructionsEntry,
 } from './shared';
-import { buildTomlTable, removeTomlTable, upsertTomlTable } from './toml';
+import { buildTomlTable, getTomlTable, removeTomlTable, upsertTomlTable } from './toml';
+import { BoundWorktree } from '../../sync/worktree';
 
 const TOML_HEADER = 'mcp_servers.codegraph';
 
@@ -109,10 +110,11 @@ class CodexTarget implements AgentTarget {
     return { installed, alreadyConfigured, configPath: tomlPath };
   }
 
-  install(loc: Location, _opts: InstallOptions): WriteResult {
+  install(loc: Location, opts: InstallOptions): WriteResult {
     const files: WriteResult['files'] = [];
     if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
-    files.push(writeMcpEntry(loc));
+    if (opts.boundWorktree && loc !== 'local') throw new Error('Worktree binding requires a local Codex installation.');
+    files.push(writeMcpEntry(loc, opts.boundWorktree));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
     // subagents and non-MCP harnesses read AGENTS.md but never the MCP
@@ -159,24 +161,40 @@ class CodexTarget implements AgentTarget {
   }
 }
 
-function buildCodegraphBlock(): string {
+function buildCodegraphBlock(boundWorktree?: string): string {
   const mcp = getMcpServerConfig();
+  if (boundWorktree) mcp.args.push('--bound-worktree', boundWorktree);
   return buildTomlTable(TOML_HEADER, {
     command: mcp.command,
     args: mcp.args,
   });
 }
 
-function writeMcpEntry(loc: Location): WriteResult['files'][number] {
+function writeMcpEntry(loc: Location, boundWorktree?: string): WriteResult['files'][number] {
   const file = tomlConfigPath(loc);
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const block = buildCodegraphBlock();
   // Single read — `existing === ''` derives both "is the file empty
   // or absent" and "what was its content," avoiding a TOCTOU window
   // between two `fs.existsSync` calls.
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+  const ownTable = getTomlTable(existing, TOML_HEADER);
+  if (!boundWorktree && ownTable?.includes('--bound-worktree')) {
+    // Preserve an existing safety boundary during install/upgrade refresh.
+    const raw = ownTable.match(/^args\s*=\s*(\[.*\])\s*$/m)?.[1];
+    const args: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(args) || args.length !== 4 || args[0] !== 'serve' || args[1] !== '--mcp' || args[2] !== '--bound-worktree' || typeof args[3] !== 'string') {
+      throw new Error('Cannot safely refresh existing Codex worktree binding; use an explicit --bound-worktree.');
+    }
+    boundWorktree = args[3];
+  }
+  if (boundWorktree) {
+    const bound = new BoundWorktree(boundWorktree);
+    if (bound.root !== fs.realpathSync(process.cwd())) throw new Error('Local Codex binding must match the current checkout root.');
+    boundWorktree = bound.root;
+  }
+  const block = buildCodegraphBlock(boundWorktree);
   const created = existing.length === 0;
   const { content: nextContent, action } = upsertTomlTable(existing, TOML_HEADER, block);
 

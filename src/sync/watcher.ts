@@ -35,6 +35,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isWorktreeSource } from './worktree';
 import { isSourceFile, buildScopeIgnore, type ScopeIgnore } from '../extraction';
 import { loadExtensionOverrides, PROJECT_CONFIG_FILENAME } from '../project-config';
 import { logDebug, logWarn } from '../errors';
@@ -178,6 +179,7 @@ const IS_TEST_RUNTIME = !!(process.env.VITEST || process.env.NODE_ENV === 'test'
  * Options for the file watcher
  */
 export interface WatchOptions {
+  strictWorktree?: boolean;
   /**
    * Debounce delay in milliseconds.
    * After the last file change, wait this long before triggering sync.
@@ -374,7 +376,7 @@ export class FileWatcher {
   constructor(
     projectRoot: string,
     syncFn: (paths?: string[]) => Promise<{ filesChanged: number; durationMs: number }>,
-    options: WatchOptions = {},
+    private options: WatchOptions = {},
     isFileStateCurrent?: (relativePath: string) => boolean
   ) {
     this.projectRoot = projectRoot;
@@ -623,6 +625,7 @@ export class FileWatcher {
    */
   private handleChange(rel: string): void {
     if (!rel || rel === '.' || rel.startsWith('..')) return;
+    if (!isWorktreeSource(this.projectRoot, rel, this.options.strictWorktree)) return;
     // `.git/info/exclude` is otherwise always-ignored with the rest of `.git/`,
     // but it feeds `buildScopeIgnore` — allow it through as a scope refresh
     // when the platform delivers the event (recursive watchers may; Linux
@@ -768,6 +771,7 @@ export class FileWatcher {
    * dir-only ignore rule like `build/` matches.
    */
   private shouldIgnoreDir(dirPath: string): boolean {
+    if (!isWorktreeSource(this.projectRoot, dirPath, this.options.strictWorktree)) return true;
     const rel = normalizePath(path.relative(this.projectRoot, dirPath));
     if (!rel || rel === '.' || rel.startsWith('..')) return false; // root / outside
     if (this.isAlwaysIgnored(rel)) return true;

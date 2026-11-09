@@ -29,6 +29,7 @@ import { loadExtensionOverrides, loadIncludeIgnoredPatterns, loadExcludePatterns
 import { isCodeGraphDataDir } from '../directory';
 import { logDebug, logWarn } from '../errors';
 import { validatePathWithinRoot, normalizePath } from '../utils';
+import { isWorktreeSource } from '../sync/worktree';
 import ignore, { Ignore } from 'ignore';
 import { detectFrameworks, getFrameworkResolver } from '../resolution/frameworks';
 import { declaredDependencies } from '../resolution/frameworks/package-deps';
@@ -1543,7 +1544,8 @@ function collectGitStatus(repoDir: string, prefix: string, out: GitChanges, isSo
  */
 export function scanDirectory(
   rootDir: string,
-  onProgress?: (current: number, file: string) => void
+  onProgress?: (current: number, file: string) => void,
+  strictWorktree = false
 ): string[] {
   // Custom extension → language overrides from the project's codegraph.json.
   const overrides = loadExtensionOverrides(rootDir);
@@ -1554,7 +1556,7 @@ export function scanDirectory(
     const files: string[] = [];
     let count = 0;
     for (const filePath of gitFiles) {
-      if (isSourceFile(filePath, overrides, rootDir)) {
+      if (isWorktreeSource(rootDir, filePath, strictWorktree) && isSourceFile(filePath, overrides, rootDir)) {
         files.push(filePath);
         count++;
         onProgress?.(count, filePath);
@@ -1564,7 +1566,7 @@ export function scanDirectory(
   }
 
   // Fallback: walk filesystem for non-git projects
-  return scanDirectoryWalk(rootDir, onProgress);
+  return scanDirectoryWalk(rootDir, onProgress, undefined, strictWorktree);
 }
 
 /**
@@ -1595,7 +1597,8 @@ function tallySkip(stats: ScanSkipStats | undefined, rel: string): void {
 export async function scanDirectoryAsync(
   rootDir: string,
   onProgress?: (current: number, file: string) => void,
-  stats?: ScanSkipStats
+  stats?: ScanSkipStats,
+  strictWorktree = false
 ): Promise<string[]> {
   // Custom extension → language overrides from the project's codegraph.json.
   const overrides = loadExtensionOverrides(rootDir);
@@ -1605,7 +1608,7 @@ export async function scanDirectoryAsync(
     const files: string[] = [];
     let count = 0;
     for (const filePath of gitFiles) {
-      if (isSourceFile(filePath, overrides, rootDir)) {
+      if (isWorktreeSource(rootDir, filePath, strictWorktree) && isSourceFile(filePath, overrides, rootDir)) {
         files.push(filePath);
         count++;
         onProgress?.(count, filePath);
@@ -1620,7 +1623,7 @@ export async function scanDirectoryAsync(
     return files;
   }
 
-  return scanDirectoryWalk(rootDir, onProgress, stats);
+  return scanDirectoryWalk(rootDir, onProgress, stats, strictWorktree);
 }
 
 /**
@@ -1629,7 +1632,8 @@ export async function scanDirectoryAsync(
 function scanDirectoryWalk(
   rootDir: string,
   onProgress?: (current: number, file: string) => void,
-  stats?: ScanSkipStats
+  stats?: ScanSkipStats,
+  strictWorktree = false
 ): string[] {
   const files: string[] = [];
   let count = 0;
@@ -1667,6 +1671,7 @@ function scanDirectoryWalk(
   };
 
   function walk(dir: string, matchers: ScopedIgnore[]): void {
+    if (!isWorktreeSource(rootDir, dir, strictWorktree)) return;
     let realDir: string;
     try {
       realDir = fs.realpathSync(dir);
@@ -1702,6 +1707,7 @@ function scanDirectoryWalk(
 
       const fullPath = path.join(dir, entry.name);
       const relativePath = normalizePath(path.relative(rootDir, fullPath));
+      if (!isWorktreeSource(rootDir, fullPath, strictWorktree)) continue;
 
       if (entry.isSymbolicLink()) {
         try {
@@ -1763,7 +1769,7 @@ function scanDirectoryWalk(
   if (included.size > 0) {
     const seen = new Set(files);
     for (const f of included) {
-      if (!seen.has(f)) {
+      if (!seen.has(f) && isWorktreeSource(rootDir, f, strictWorktree)) {
         files.push(f);
         seen.add(f);
       }
@@ -1857,7 +1863,7 @@ export class ExtractionOrchestrator {
    */
   private scopedMatcher: { key: string; matcher: ScopeIgnore } | null = null;
 
-  constructor(rootDir: string, queries: QueryBuilder) {
+  constructor(rootDir: string, queries: QueryBuilder, private strictWorktree = false) {
     this.rootDir = rootDir;
     this.queries = queries;
   }
@@ -1966,7 +1972,7 @@ export class ExtractionOrchestrator {
    */
   private ensureDetectedFrameworks(files?: string[]): string[] {
     if (this.detectedFrameworkNames !== null) return this.detectedFrameworkNames;
-    const fileList = files ?? scanDirectory(this.rootDir);
+    const fileList = files ?? scanDirectory(this.rootDir, undefined, this.strictWorktree);
     const context = this.buildDetectionContext(fileList);
     this.detectedFrameworkNames = detectFrameworks(context).map((r) => r.name);
     const declared = declaredDependencies(context);
@@ -2099,7 +2105,7 @@ export class ExtractionOrchestrator {
         total: 0,
         currentFile: file,
       });
-    }, skipStats);
+    }, skipStats, this.strictWorktree);
     if (process.env.CODEGRAPH_SYNTH_TIMINGS) console.error(`[phase-timing] scan: ${Date.now() - tScan}ms (${files.length} files)`);
     /** Only meaningful when nothing was indexable — see IndexResult (#1502). */
     const skipSummary = (): Pick<IndexResult, 'filesSkippedUnsupported' | 'topUnsupportedExtensions'> => {
@@ -2424,7 +2430,7 @@ export class ExtractionOrchestrator {
             // Indexing read: follow in-root symlinks the directory walk already
             // descended into (the `../` guard still applies) so files reached
             // via an in-root symlink-to-outside still index (#935).
-            const fullPath = validatePathWithinRoot(this.rootDir, fp, { allowSymlinkEscape: true });
+            const fullPath = isWorktreeSource(this.rootDir, fp, this.strictWorktree) ? validatePathWithinRoot(this.rootDir, fp, { allowSymlinkEscape: !this.strictWorktree }) : null;
             if (!fullPath) {
               logWarn('Path traversal blocked in batch reader', { filePath: fp });
               return { filePath: fp, content: null as string | null, stats: null as fs.Stats | null, error: new Error('Path traversal blocked') };
@@ -2762,7 +2768,7 @@ export class ExtractionOrchestrator {
    */
   async indexFile(relativePath: string): Promise<ExtractionResult> {
     // Indexing read: follow in-root symlinks (the `../` guard still applies), #935.
-    const fullPath = validatePathWithinRoot(this.rootDir, relativePath, { allowSymlinkEscape: true });
+    const fullPath = isWorktreeSource(this.rootDir, relativePath, this.strictWorktree) ? validatePathWithinRoot(this.rootDir, relativePath, { allowSymlinkEscape: !this.strictWorktree }) : null;
 
     if (!fullPath) {
       return {
@@ -2816,7 +2822,7 @@ export class ExtractionOrchestrator {
     stats: fs.Stats
   ): Promise<ExtractionResult> {
     // Prevent `../` traversal; follow in-root symlinks like the directory walk (#935).
-    const fullPath = validatePathWithinRoot(this.rootDir, relativePath, { allowSymlinkEscape: true });
+    const fullPath = isWorktreeSource(this.rootDir, relativePath, this.strictWorktree) ? validatePathWithinRoot(this.rootDir, relativePath, { allowSymlinkEscape: !this.strictWorktree }) : null;
     if (!fullPath) {
       logWarn('Path traversal blocked in indexFileWithContent', { relativePath });
       return {
@@ -3325,6 +3331,7 @@ export class ExtractionOrchestrator {
       currentFiles = unique.filter(
         (p) =>
           isSourceFile(p, overrides, this.rootDir) &&
+          isWorktreeSource(this.rootDir, p, this.strictWorktree) &&
           !scope.ignores(p) &&
           fs.existsSync(path.join(this.rootDir, p))
       );
@@ -3340,7 +3347,7 @@ export class ExtractionOrchestrator {
       // `.gitignore` / exclude-standard change that forced this full sync is
       // visible to the next scoped sync (#1728).
       this.scopedMatcher = null;
-      currentFiles = await scanDirectoryAsync(this.rootDir);
+      currentFiles = await scanDirectoryAsync(this.rootDir, undefined, undefined, this.strictWorktree);
       if (process.env.CODEGRAPH_SYNTH_TIMINGS) console.error(`[phase-timing] sync-scan: ${Date.now() - tSyncScan}ms (${currentFiles.length} files)`);
       filesChecked = currentFiles.length;
 
@@ -3621,7 +3628,7 @@ export class ExtractionOrchestrator {
       for (const filePath of candidates) {
         const tracked = this.queries.getFileByPath(filePath);
         const fullPath = path.join(this.rootDir, filePath);
-        if (!isSourceFile(filePath, overrides, this.rootDir) || scope.ignores(filePath) || !fs.existsSync(fullPath)) {
+        if (!isWorktreeSource(this.rootDir, filePath, this.strictWorktree) || !isSourceFile(filePath, overrides, this.rootDir) || scope.ignores(filePath) || !fs.existsSync(fullPath)) {
           if (tracked) removed.push(filePath);
           continue;
         }
@@ -3645,7 +3652,7 @@ export class ExtractionOrchestrator {
     }
 
     // === Fallback: full scan (non-git project or git failure) ===
-    const currentFiles = new Set(scanDirectory(this.rootDir));
+    const currentFiles = new Set(scanDirectory(this.rootDir, undefined, this.strictWorktree));
     const trackedFiles = this.queries.getAllFiles();
 
     // Build Map for O(1) lookups
