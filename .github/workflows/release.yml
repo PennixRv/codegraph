@@ -259,7 +259,7 @@ jobs:
             name=$(node -p "require('./$dir/package.json').name")
             ok=
             for i in $(seq 1 30); do
-              if npm view "$name@$V" version >/dev/null 2>&1; then ok=1; break; fi
+              if npm view "$name@$V" version >/dev/null; then ok=1; break; fi
               echo "waiting for $name@$V to appear ($i)…"; sleep 10
             done
             [ -n "$ok" ] || { echo "::error::$name@$V never appeared on the registry"; exit 1; }
