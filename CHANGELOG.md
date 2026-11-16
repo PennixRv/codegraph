@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.5] - 2026-11-16
+
 ### Highlights
 
 - Codex 连接刷新保留禁用、工具过滤、环境等用户策略，并能识别带引号或缩进的 TOML 表。
@@ -1501,3 +1504,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2-pennix.2]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.2
 [1.6.2-pennix.3]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.3
 [1.6.2-pennix.4]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.4
+[1.6.2-pennix.5]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.5
