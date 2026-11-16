@@ -14,6 +14,7 @@
 
 | 指南（Guide） | 说明（Description） | 状态（Status） |
 |-------|-------------|--------|
+| [CodeGraph 工程边界](./codegraph-engineering.md) | 当前源码架构、受控安装、构建与测试入口 | 已核验 |
 | [目录结构（Directory Structure）](./directory-structure.md) | 模块组织和文件布局 | 待填写 |
 | [数据库指南（Database Guidelines）](./database-guidelines.md) | ORM 模式、查询和迁移 | 待填写 |
 | [错误处理（Error Handling）](./error-handling.md) | 错误类型和处理策略 | 待填写 |

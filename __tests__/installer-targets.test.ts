@@ -957,15 +957,42 @@ describe('Installer targets — partial-state idempotency', () => {
       'args = ["serve", "--mcp"]\nenabled = true',
     );
     fs.writeFileSync(tomlPath, edited);
-    // Re-install: our serializer doesn't know `enabled = true`, so
-    // the block no longer matches the canonical form — we'll
-    // overwrite it. This is the documented contract: we own the
-    // codegraph block exclusively.
+    // Connection refresh must not reset user policy inside the table.
     const second = codex.install('global', { autoAllow: false });
     const tomlEntry = second.files.find((f) => f.path.endsWith('config.toml'))!;
-    expect(tomlEntry.action).toBe('updated');
+    expect(tomlEntry.action).toBe('unchanged');
     const after = fs.readFileSync(tomlPath, 'utf-8');
-    expect(after).not.toContain('enabled = true');
+    expect(after).toBe(edited);
+  });
+
+  it('codex: native install detects quoted tables and retains disabled policy and binding args', () => {
+    const codex = getTarget('codex')!;
+    const file = path.join(tmpHome, '.codex', 'config.toml');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '  [ mcp_servers . "codegraph" ] # custom\nenabled = false\ndisabled_tools = ["write"]\ncommand = "old"\nargs = ["old"]\n[mcp_servers.other]\ncommand = "keep"\n');
+    expect(codex.detect('global').alreadyConfigured).toBe(true);
+    codex.install('global', { autoAllow: false });
+    const updated = fs.readFileSync(file, 'utf8');
+    expect(updated).toContain('enabled = false\ndisabled_tools = ["write"]');
+    expect(updated).toContain('[mcp_servers.other]\ncommand = "keep"');
+    expect(codex.install('global', { autoAllow: false }).files[0].action).toBe('unchanged');
+    codex.uninstall('global');
+    expect(fs.readFileSync(file, 'utf8')).toContain('[mcp_servers.other]\ncommand = "keep"');
+  });
+
+  it('codex: conflicting parent inline definition stops install and uninstall before AGENTS edits', () => {
+    const codex = getTarget('codex')!;
+    const file = path.join(tmpCwd, '.codex', 'config.toml');
+    const agents = path.join(tmpCwd, 'AGENTS.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const original = 'mcp_servers = { codegraph = { command = "old" }, other = { command = "keep" } }\n';
+    fs.writeFileSync(file, original);
+    fs.writeFileSync(agents, LEGACY_BLOCK);
+    expect(codex.detect('local').alreadyConfigured).toBe(true);
+    expect(() => codex.install('local', { autoAllow: false })).toThrow(/Cannot safely edit/);
+    expect(() => codex.uninstall('local')).toThrow(/Cannot safely remove/);
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+    expect(fs.readFileSync(agents, 'utf8')).toBe(LEGACY_BLOCK);
   });
 
   it('codex: install, re-install, and uninstall preserve trailing array-of-tables siblings', () => {
@@ -999,7 +1026,7 @@ describe('Installer targets — partial-state idempotency', () => {
     expect(first.files.find((f) => f.path === tomlPath)?.action).toBe('updated');
     const afterInstall = fs.readFileSync(tomlPath, 'utf-8');
     expect(afterInstall).toContain('command = "codegraph"');
-    expect(afterInstall).not.toContain('[[not-a-table]]');
+    expect(afterInstall).toContain('[[not-a-table]]');
     expect(afterInstall.endsWith(historyTables)).toBe(true);
 
     const second = codex.install('global', { autoAllow: false });

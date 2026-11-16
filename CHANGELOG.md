@@ -12,6 +12,17 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Highlights
+
+- Codex 连接刷新保留禁用、工具过滤、环境等用户策略，并能识别带引号或缩进的 TOML 表。
+- MCP 输出管道断开时正常释放本会话引擎和写锁；下载载荷必须通过完整摘要核验。
+
+### Fixes
+
+- TOML 结构定位跳过多行字符串中的伪表头，无法安全改写的 inline、dotted 或重复定义明确拒绝；移除保留其他 owner。
+- SHA256SUMS 缺失、无精确条目、重复条目或摘要不匹配时拒绝执行下载载荷；受管入口缺平台包时交回 Lifecycle repair，禁止缓存和下载替代。
+- 选择性吸收 upstream 329dd12f 的 stdout 终止处理，使 direct server 和本地 proxy 在 stdin 仍打开时正常退出，且不影响其他 daemon 客户端。
+- 精简活动 AGENTS，纠正 fork 平台、发行和 local 短块合同，按需导航工程背景，不再假设文档预算已经提高；原生迁移项目 Teamwork 资产并保留历史任务。
 
 ## [1.6.2-pennix.4] - 2026-11-09
 

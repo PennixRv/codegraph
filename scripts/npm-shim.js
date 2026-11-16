@@ -19,6 +19,7 @@
 // the matching bundle straight from GitHub Releases — the very archive
 // install.sh uses — into a cache dir, then runs that. Knobs:
 //   CODEGRAPH_NO_DOWNLOAD=1     disable the network fallback (print guidance)
+//   CODEGRAPH_MANAGED=1         require the installed platform package; no fallback
 //   CODEGRAPH_INSTALL_DIR=DIR   cache location (default: ~/.codegraph)
 //   CODEGRAPH_DOWNLOAD_BASE=URL release-download base (for mirrors/air-gapped)
 //
@@ -110,6 +111,9 @@ function liftoff(entry) {
 // Download + cache the platform bundle from GitHub Releases. Returns
 // {command, args}; exits the process with guidance if it can't.
 async function selfHealBundle() {
+  if (process.env.CODEGRAPH_MANAGED) {
+    fail('the managed platform package is missing; repair it through Pennix Lifecycle. Cached and downloaded substitutes are disabled.');
+  }
   var version = readVersion();
   var bundlesDir = path.join(process.env.CODEGRAPH_INSTALL_DIR || path.join(os.homedir(), '.codegraph'), 'bundles');
   var dest = path.join(bundlesDir, target + '-' + version);
@@ -201,25 +205,24 @@ function download(url, dest, redirectsLeft) {
   });
 }
 
-// Best-effort integrity check. When the release publishes a SHA256SUMS file, the
-// downloaded archive MUST match its listed hash or we abort. When that file is
-// absent (older releases) or simply unreachable, we proceed — the archive still
-// arrived from GitHub over TLS. So tampering/corruption is caught, while a
-// missing checksum never breaks an install.
+// A download is executable only after one exact asset checksum matches.
 async function verifyChecksum(archivePath, asset, base, version) {
   var sumsPath = archivePath + '.SHA256SUMS';
   try {
     await download(base + '/v' + version + '/SHA256SUMS', sumsPath, 6);
   } catch (e) {
-    return; // not published / unreachable → skip
+    throw new Error('SHA256SUMS unavailable: ' + e.message);
   }
   var expected = null;
   var lines = fs.readFileSync(sumsPath, 'utf8').split('\n');
   for (var i = 0; i < lines.length; i++) {
     var m = lines[i].trim().match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/);
-    if (m && path.basename(m[2].trim()) === asset) { expected = m[1].toLowerCase(); break; }
+    if (m && m[2].trim() === asset) {
+      if (expected) throw new Error('duplicate checksum entry for ' + asset);
+      expected = m[1].toLowerCase();
+    }
   }
-  if (!expected) return; // asset not listed → nothing to check
+  if (!expected) throw new Error('SHA256SUMS has no entry for ' + asset);
   var actual = require('crypto').createHash('sha256').update(fs.readFileSync(archivePath)).digest('hex');
   if (actual !== expected) {
     throw new Error('checksum mismatch for ' + asset +

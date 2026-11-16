@@ -98,6 +98,16 @@ describe('npm-shim windowsHide (#1092)', () => {
 });
 
 describe.skipIf(isWindows)('npm-shim launcher', () => {
+  it('refuses cached substitutes when the managed platform package is missing', async () => {
+    const pkg = makePkg('1.2.3-managed');
+    const cache = mkTmp('cache');
+    writeLauncher(path.join(cache, 'bundles', `${target}-1.2.3-managed`, 'bin'));
+    const r = await runShim(pkg, ['--version'], { CODEGRAPH_INSTALL_DIR: cache, CODEGRAPH_MANAGED: '1' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('Pennix Lifecycle');
+    expect(r.stderr).not.toContain('downloading');
+    expect(r.stdout).not.toContain('FAKE_BUNDLE_RAN');
+  });
   it('runs the installed optional-dependency bundle without any download', async () => {
     const pkg = makePkg();
     const platformPkg = path.join(pkg, 'node_modules', '@pennixrv', `codegraph-${target}`);
@@ -298,15 +308,31 @@ describe.skipIf(!CAN_NET)('npm-shim download fallback (local HTTPS)', () => {
     expect(fs.existsSync(path.join(cache, 'bundles', `${target}-5.0.0-bad`))).toBe(false);
   }, 20000);
 
-  it('proceeds when no SHA256SUMS is published (older releases)', async () => {
+  it('refuses execution when SHA256SUMS is missing', async () => {
     sumsBody = null; // 404
     const pkg = makePkg('5.0.0-nosums');
     const cache = mkTmp('cache');
     const r = await runShim(pkg, ['--version'], netEnv(cache));
 
-    expect(r.status).toBe(0);
+    expect(r.status).toBe(1);
     expect(r.stderr).toContain('downloading');
-    expect(r.stderr).not.toContain('checksum verified'); // skipped, not failed
-    expect(r.stdout).toContain('FAKE_BUNDLE_RAN');
+    expect(r.stderr).toContain('SHA256SUMS unavailable');
+    expect(r.stdout).not.toContain('FAKE_BUNDLE_RAN');
+    expect(fs.existsSync(path.join(cache, 'bundles', `${target}-5.0.0-nosums`))).toBe(false);
+  }, 20000);
+
+  it.each([
+    ['unrelated entry', `${'0'.repeat(64)}  other.tar.gz\n`, 'no entry'],
+    ['path alias', `${'0'.repeat(64)}  nested/${asset}\n`, 'no entry'],
+    ['duplicate entries', `${'0'.repeat(64)}  ${asset}\n${'1'.repeat(64)}  ${asset}\n`, 'duplicate checksum'],
+  ])('refuses %s in SHA256SUMS', async (_, body, diagnostic) => {
+    sumsBody = body;
+    const pkg = makePkg('5.0.0-entry');
+    const cache = mkTmp('cache');
+    const r = await runShim(pkg, ['--version'], netEnv(cache));
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(diagnostic);
+    expect(r.stdout).not.toContain('FAKE_BUNDLE_RAN');
+    expect(fs.existsSync(path.join(cache, 'bundles', `${target}-5.0.0-entry`))).toBe(false);
   }, 20000);
 });

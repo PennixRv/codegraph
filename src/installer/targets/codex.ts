@@ -46,7 +46,7 @@ import {
   validateProjectInstructionsFile,
   upsertInstructionsEntry,
 } from './shared';
-import { buildTomlTable, getTomlTable, removeTomlTable, upsertTomlTable } from './toml';
+import { buildTomlTable, getTomlTable, removeTomlTable, tomlDefinesTable, upsertTomlTable } from './toml';
 import { BoundWorktree } from '../../sync/worktree';
 
 const TOML_HEADER = 'mcp_servers.codegraph';
@@ -100,7 +100,7 @@ class CodexTarget implements AgentTarget {
     if (fs.existsSync(tomlPath)) {
       try {
         const content = fs.readFileSync(tomlPath, 'utf-8');
-        alreadyConfigured = content.includes(`[${TOML_HEADER}]`);
+        alreadyConfigured = tomlDefinesTable(content, TOML_HEADER);
       } catch { /* ignore */ }
     }
     // Global: ~/.codex/ existing means Codex has run here. Local: the
@@ -131,7 +131,11 @@ class CodexTarget implements AgentTarget {
     const tomlPath = tomlConfigPath(loc);
     if (fs.existsSync(tomlPath)) {
       const content = fs.readFileSync(tomlPath, 'utf-8');
-      const { content: nextContent, action } = removeTomlTable(content, TOML_HEADER);
+      const result = removeTomlTable(content, TOML_HEADER);
+      if (result.action === 'conflict') {
+        throw new Error(`Cannot safely remove ${TOML_HEADER}: ${result.conflict.form} at line ${result.conflict.line}; file unchanged.`);
+      }
+      const { content: nextContent, action } = result;
       if (action === 'removed') {
         if (nextContent.trim() === '') {
           try { fs.unlinkSync(tomlPath); } catch { /* ignore */ }
