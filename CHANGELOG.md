@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove the global Node 25-and-later ban and source package upper engine bound. Source execution requires Node 22.5 or newer for `node:sqlite`; WASM compilation retains the existing Liftoff workaround across launchers and workers. Official isolated Node 25.9.0 and 26.13.1 load and parse all 32 supported grammars, use SQLite, and run CLI help/version successfully.
 
 ## [1.6.2-pennix.5] - 2026-11-16
 
