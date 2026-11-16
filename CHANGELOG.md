@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.2-pennix.6] - 2026-11-16
+
 ### Fixed
 
 - Remove the global Node 25-and-later ban and source package upper engine bound. Source execution requires Node 22.5 or newer for `node:sqlite`; WASM compilation retains the existing Liftoff workaround across launchers and workers. Official isolated Node 25.9.0 and 26.13.1 load and parse all 32 supported grammars, use SQLite, and run CLI help/version successfully.
@@ -1508,3 +1511,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2-pennix.3]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.3
 [1.6.2-pennix.4]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.4
 [1.6.2-pennix.5]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.5
+[1.6.2-pennix.6]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.6
