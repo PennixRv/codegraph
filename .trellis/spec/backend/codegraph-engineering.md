@@ -20,6 +20,8 @@ Codex／OpenCode 全局操作不改用户 AGENTS；明确 local 安装仅管理 
 
 Codex prompt-hook 的父进程拥有输入、输出、总时限及整个子进程组；读取图与宿主配置放在可终止的隔离 worker，不在输入链路启动 daemon、遥测或写索引。只有宿主已信任的当前 Git 根、独立完整索引、唯一锚点及实际源码 hash 校验通过才预取有界关系；其他情况提示或静默。原生 installer 只生成定义，确切信任交 Lifecycle；共享 Hook 更新保留其他 owner 的位置，撤回中间项可留空槽。完整结构结论仍由原生查询和当前证据支撑。
 
+getCallers／getCallees 的邻居集合包含 calls、references、imports、instantiates、navigates。呈现实际 edge.kind，不能把所有邻居都描述为运行时调用；跳过重名候选本身，不丢弃其他已经核验的唯一锚点。
+
 ## 构建、回归与发行
 
 `npm run build` 顺序运行 tsc、copy-assets、build:ui 并设置 CLI 可执行权限。schema.sql、全部 grammar WASM 和 dist/viewer 必须进入载荷，`scripts/check-ui-build.mjs` 核验。`build:lib` 是独立 UI 库构建，不属于普通 build；不因维护 CLI 而发布该私有库。

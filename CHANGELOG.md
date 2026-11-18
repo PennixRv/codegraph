@@ -15,6 +15,7 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Pennix
 
 - 修复多候选提示的保守降级：次要代码词重名不再清除已经核验的唯一锚点；没有有效锚点时仍只提示，不任选重名符号。真实大仓库中的文件名及扩展名候选回归覆盖此路径。
+- 预取保留每条原生边的实际类型，区分 calls、references、imports 等关系，不把 SDK getCallees 返回的引用统称为调用。
 
 
 ## [1.6.3-pennix.1] - 2026-11-18

@@ -98,10 +98,10 @@ async function contextFor(value: unknown): Promise<string> {
       remember(node);
       lines.push('Symbol: ' + label(node));
       // Same one-hop relationship queries as the native compact node view; no source bodies.
-      for (const [direction, found] of [['Caller', cg.getCallers(node.id)], ['Callee', cg.getCallees(node.id)]] as const) {
+      for (const [direction, found] of [['Incoming', cg.getCallers(node.id)], ['Outgoing', cg.getCallees(node.id)]] as const) {
         for (const relation of found.slice(0, 12)) {
           remember(relation.node);
-          lines.push(`${direction}: ${label(relation.node)}`);
+          lines.push(`${direction} ${relation.edge.kind}: ${label(relation.node)}`);
         }
         if (found.length > 12) lines.push(`${direction}: more relationships omitted; query the native tool.`);
       }

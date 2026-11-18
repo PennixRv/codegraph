@@ -53,7 +53,7 @@ describe.runIf(process.platform === 'linux')('Codex native CLI hook over a real 
     fs.mkdirSync(bin);
     git(root, 'init', '-b', 'main');
     fs.mkdirSync(path.join(root, 'src'));
-    fs.writeFileSync(path.join(root, 'src', 'main.ts'), 'export const unrelatedOne = 1;\nexport const unrelatedTwo = 2;\nexport function helperLeaf() { return 1; }\nexport function entryPoint() { return helperLeaf(); }\n');
+    fs.writeFileSync(path.join(root, 'src', 'main.ts'), 'export const unrelatedOne = 1;\nexport const unrelatedTwo = 2;\nexport function helperLeaf() { return unrelatedOne; }\nexport function entryPoint() { return helperLeaf(); }\n');
     fs.writeFileSync(path.join(root, 'src', 'a.ts'), 'export function ambiguousHook() { return 1; }\n');
     fs.writeFileSync(path.join(root, 'src', 'b.ts'), 'export function ambiguousHook() { return 2; }\n');
     git(root, 'add', 'src');
@@ -85,13 +85,15 @@ describe.runIf(process.platform === 'linux')('Codex native CLI hook over a real 
   it('prioritizes an explicit symbol over unrelated declarations in its named file', () => {
     const text = JSON.parse(run('分析 `src/main.ts` 中 entryPoint 的调用链')).hookSpecificOutput.additionalContext;
     expect(text).toContain('Symbol: entryPoint');
-    expect(text).toContain('Callee: helperLeaf');
+    expect(text).toContain('Outgoing calls: helperLeaf');
     expect(text).not.toContain('Symbol: helperLeaf');
     expect(text).not.toContain('unrelatedOne');
   });
 
   it('keeps a verified unique anchor when another code token is ambiguous', () => {
-    expect(run('Who calls helperLeaf? Also ambiguousHook.')).toContain('Caller: entryPoint');
+    const text = run('Who calls helperLeaf? Also ambiguousHook.');
+    expect(text).toContain('Incoming calls: entryPoint');
+    expect(text).toContain('Outgoing references: unrelatedOne');
     expect(JSON.parse(run('Who calls ambiguousHook?')).hookSpecificOutput.additionalContext).toBe(CODEX_GRAPH_NUDGE);
   });
 
