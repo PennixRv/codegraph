@@ -4,6 +4,10 @@
  * shortcut: this is not a general TOML validator; unsupported definitions fail
  * before writing. Use a full parser if the installer must rewrite inline values.
  */
+
+import * as fs from 'fs';
+import { atomicWriteFileSync, removeFileUnlessLinked } from './shared';
+import type { WriteResult } from './types';
 /**
  * Serialize a record into the body lines of a TOML table. Values
  * supported: string, string[]. Other types throw — the codex MCP
@@ -60,7 +64,7 @@ function assertWritable(layout: TableLayout, header: string): void {
 }
 
 /** Replace only supplied keys, retaining unknown settings, comments and subtables. */
-export function upsertTomlTable(
+export function upsertTomlConnection(
   content: string,
   header: string,
   block: string,
@@ -92,6 +96,38 @@ export function upsertTomlTable(
   // Stable ordering keeps an insertion after the last replaced statement.
   for (const edit of edits.sort((a, b) => b.start - a.start)) next = next.slice(0, edit.start) + edit.text + next.slice(edit.end);
   return { content: next, action: next === content ? 'unchanged' : 'replaced' };
+}
+
+export function upsertTomlTable(
+  fileContent: string,
+  header: string,
+  block: string,
+):
+  | { content: string; action: 'inserted' | 'replaced' | 'unchanged' }
+  | { content: string; action: 'conflict'; conflict: TomlConflict } {
+  const layout = layoutOf(fileContent, header.split('.'));
+  const conflict = layout.defined ?? layout.blocked;
+  if (conflict) return { content: fileContent, action: 'conflict', conflict };
+
+  const eol = tomlLineBreak(fileContent);
+  const ours = block.replace(/\r?\n/g, eol);
+  const [first, ...duplicates] = layout.tables;
+
+  if (!first) {
+    // Insert at end with separating blank line if there's existing content.
+    const trimmed = fileContent.trimEnd();
+    const sep = trimmed.length > 0 ? eol + eol : '';
+    return { content: trimmed + sep + ours + eol, action: 'inserted' };
+  }
+
+  const existingBlock = fileContent.substring(first.start, first.end).replace(/(?:\r?\n)+$/, '');
+  if (duplicates.length === 0 && existingBlock === ours) {
+    return { content: fileContent, action: 'unchanged' };
+  }
+
+  let content = fileContent;
+  for (const dup of [...duplicates].reverse()) content = spliceBlock(content, dup, null, eol);
+  return { content: spliceBlock(keepFinalLineBreak(fileContent, content, eol), first, ours, eol), action: 'replaced' };
 }
 
 function keepFinalLineBreak(original: string, content: string, eol: string): string {
@@ -141,6 +177,84 @@ export function tomlDefinesTable(fileContent: string, header: string): boolean {
   const layout = layoutOf(fileContent, header.split('.'));
   return layout.tables.length > 0 || layout.subTables.length > 0 || layout.defined !== null;
 }
+
+/** What a write or removal did to the file, and what the user should know about it. */
+interface TomlFileResult {
+  file: WriteResult['files'][number];
+  note?: string;
+}
+
+/**
+ * Write the `[header]` table `block` into `file`, creating the file if needed.
+ * With `keepExisting`, a `[header]` table already there is left as it is: it's
+ * the user's, however it differs from `block`.
+ *
+ * Never appends a second definition: a table defined twice makes the whole
+ * file invalid TOML, and the agent then loads none of it (#2562). A definition
+ * in another form is left as written, with a note. A parent that rules the
+ * table out throws, with nothing changed.
+ */
+export function writeTomlTable(
+  file: string,
+  header: string,
+  block: string,
+  options: { keepExisting?: boolean } = {},
+): TomlFileResult {
+  // Single read — `existing === ''` derives both "is the file empty or absent"
+  // and "what was its content," avoiding a TOCTOU window between two
+  // `fs.existsSync` calls.
+  const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+  const created = existing.length === 0;
+  const layout = layoutOf(existing, header.split('.'));
+  const conflict = layout.defined ?? layout.blocked;
+  if (conflict) {
+    if (conflict.kind === 'defined') {
+      // The user's own entry, in a form CodeGraph doesn't rewrite: it already
+      // configures the agent, so it is left exactly as written.
+      return {
+        file: { path: file, action: 'unchanged' },
+        note: `Left the ${header} entry in ${file} as you wrote it (${conflict.form}, line ${conflict.line}): CodeGraph only rewrites a [${header}] table.`,
+      };
+    }
+    throw new Error(
+      `${file} sets ${conflict.key} as ${conflict.form} (line ${conflict.line}), so a [${header}] table can't be added without breaking the file. ` +
+      `Nothing was changed: add CodeGraph's server to ${conflict.key} yourself, or rewrite it as [${conflict.key}.<name>] tables, then run this again.`,
+    );
+  }
+
+  const result = upsertTomlTable(existing, header, block);
+  if (result.action === 'unchanged' || (result.action === 'replaced' && options.keepExisting)) {
+    return { file: { path: file, action: 'unchanged' } };
+  }
+  atomicWriteFileSync(file, result.content);
+  return { file: { path: file, action: created ? 'created' : 'updated' } };
+}
+
+/**
+ * Take every definition of the table out of `file`. A file left with nothing
+ * in it is deleted, or emptied through a symbolic link (#2721). A definition
+ * that can't be edited stays, with a note saying so.
+ */
+export function deleteTomlTable(file: string, header: string): TomlFileResult {
+  if (!fs.existsSync(file)) return { file: { path: file, action: 'not-found' } };
+  const content = fs.readFileSync(file, 'utf-8');
+  const result = removeTomlTable(content, header);
+  if (result.action === 'conflict') {
+    const { conflict } = result;
+    return {
+      file: { path: file, action: 'not-found' },
+      note: `${file} sets ${header} inside ${conflict.key} (${conflict.form}, line ${conflict.line}), which CodeGraph can't edit safely. Remove it from there yourself.`,
+    };
+  }
+  if (result.action === 'not-found') return { file: { path: file, action: 'not-found' } };
+  if (result.content.trim() === '') {
+    removeFileUnlessLinked(file, '');
+  } else {
+    atomicWriteFileSync(file, result.content.trimEnd() + tomlLineBreak(content));
+  }
+  return { file: { path: file, action: 'removed' } };
+}
+
 /** The line break `content` uses (its first one); `\n` when it has none. */
 export function tomlLineBreak(content: string): '\n' | '\r\n' {
   const nl = content.indexOf('\n');

@@ -21,7 +21,7 @@
  * Tests that redirect the home dir themselves (spying on `os.homedir`, or
  * setting HOME and restoring it) keep working: they restore to this sandbox.
  */
-import { afterAll } from 'vitest';
+import { afterAll, inject } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -29,6 +29,13 @@ import * as path from 'path';
 // Resolved, so a comparison against a realpath'd cwd (macOS `/var` →
 // `/private/var`) sees the same home everything else does.
 const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-test-home-')));
+
+// Recorded for the end of the run, which removes the home if the afterAll
+// below never runs (a file whose every test is skipped runs no hooks) or
+// cannot (global-setup-home-sandbox.ts).
+const registry = inject('homeSandboxRegistry');
+const registryEntry = registry ? path.join(registry, path.basename(home)) : undefined;
+if (registryEntry) fs.writeFileSync(registryEntry, home);
 
 process.env.HOME = home;
 process.env.USERPROFILE = home;
@@ -47,7 +54,7 @@ if (process.platform === 'win32') {
   delete process.env.LOCALAPPDATA;
 }
 process.env.XDG_CONFIG_HOME = path.join(home, '.config');
-for (const override of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'COPILOT_HOME', 'HERMES_HOME']) {
+for (const override of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'COPILOT_HOME', 'HERMES_HOME', 'QWEN_HOME', 'DSH_HOME', 'GROK_HOME', 'KIMI_CODE_HOME', 'QODER_CONFIG_DIR', 'PI_CODING_AGENT_DIR']) {
   delete process.env[override];
 }
 
@@ -60,7 +67,8 @@ process.env.GIT_CONFIG_GLOBAL = gitConfig;
 afterAll(() => {
   try {
     fs.rmSync(home, { recursive: true, force: true, maxRetries: 3 });
+    if (registryEntry) fs.rmSync(registryEntry, { force: true });
   } catch {
-    /* a straggling child still holding a file there; it's in the temp dir */
+    /* a straggling child still holding a file there; the end of the run retries */
   }
 });

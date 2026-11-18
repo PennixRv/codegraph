@@ -8,17 +8,15 @@
 // Compile cache FIRST: the worker's boot cost is dominated by re-requiring
 // the extraction module graph; the persistent V8 cache (Node ≥22.8) makes
 // that a bytecode load instead of a recompile. Safe no-op when unavailable.
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  (require('node:module') as { enableCompileCache?: () => void }).enableCompileCache?.();
-} catch { /* cache is best-effort */ }
+import '../compile-cache';
 
 import { parentPort } from 'worker_threads';
 import { extractFromSource } from './tree-sitter';
 import { detectLanguage, loadGrammarsForLanguages, resetParser } from './grammars';
 import { tryKernelExtractRaw } from './kernel';
 import { commonJsRequireRefs } from './commonjs-requires';
-import { getAllFrameworkResolvers, getApplicableFrameworks } from '../resolution/frameworks';
+import { frameworks } from './lazy-frameworks';
+import { mayDefineCppMacroMethods } from './languages/cpp-macro-methods';
 import type { Language, ExtractionResult } from '../types';
 
 // Emscripten prints `Aborted()` (and a follow-up RuntimeError diag
@@ -90,15 +88,17 @@ parentPort!.on('message', async (msg: { type: string; id?: number; filePath?: st
       // buffer clone is a flat memcpy). Only when no applicable framework has
       // an extract() hook: those merge extra nodes/refs into the DECODED
       // result inside extractFromSource, so such files keep the decoded path.
+      // So does a C++ file that may define methods with its own macros: they
+      // are minted after the kernel, in extractFromSource.
       let result: ExtractionResult | undefined;
       const frameworksNeedDecode =
         frameworkNames && frameworkNames.length > 0
-          ? getApplicableFrameworks(
-              getAllFrameworkResolvers().filter((r) => frameworkNames.includes(r.name)),
+          ? frameworks().getApplicableFrameworks(
+              frameworks().getAllFrameworkResolvers().filter((r) => frameworkNames.includes(r.name)),
               language
             ).some((fw) => !!fw.extract)
           : false;
-      if (!frameworksNeedDecode) {
+      if (!frameworksNeedDecode && !(language === 'cpp' && mayDefineCppMacroMethods(content!))) {
         const raw = tryKernelExtractRaw(filePath!, content!, language);
         if (raw) {
           result = {

@@ -16,6 +16,8 @@ import type CodeGraph from '../index';
 import { resolveServerRoot } from '../directory';
 import { ToolHandler } from './tools';
 import { WslSharedIndexError } from '../db/wsl-shared-index';
+import { DatabaseOpenError, isDatabaseOpenFailure } from '../db/open-error';
+import type { NodeSqliteUnavailableError } from '../db/node-sqlite';
 import { assertNoRebuild, releaseWriterLock, tryAcquireWriterLock, writerLockHeldMessage } from './writer-lock';
 import { QueryPool, resolvePoolSize } from './query-pool';
 import { endFreshnessMeasurements } from './index-freshness';
@@ -33,6 +35,15 @@ const loadCodeGraph = (): typeof import('../index').default =>
 
 /** How often the per-tool-call retry may re-run the sub-project down-scan. */
 const RETRY_SUBSCAN_TTL_MS = 5_000;
+
+/**
+ * Why the default project failed to open, when a tool call should say so
+ * rather than "no project loaded": the Windows/WSL shared index (#995), or an
+ * index that exists but SQLite could not open, or no node:sqlite at all.
+ */
+function reportableOpenFailure(err: unknown): WslSharedIndexError | DatabaseOpenError | NodeSqliteUnavailableError | null {
+  return err instanceof WslSharedIndexError || isDatabaseOpenFailure(err) ? err : null;
+}
 
 export interface MCPEngineOptions {
   boundWorktree?: BoundWorktree;
@@ -62,6 +73,13 @@ export interface MCPEngineOptions {
    * not just the later file watcher.
    */
   writerLockRoot?: string;
+  /**
+   * Called once, the first time this engine starts work that can hold the
+   * main thread: opening a project, or serving a tool call. A direct session
+   * arms its liveness watchdog here rather than at startup, so a session that
+   * only lists the tools never starts a watchdog process (#3250).
+   */
+  onWorkBegins?: () => void;
 }
 
 /**
@@ -82,21 +100,27 @@ export class MCPEngine {
   // Throttle for the retry path's sub-project down-scan (#1606) — the scan is
   // bounded but shouldn't run on every tool call in the no-default state.
   private lastRetrySubScanAt = 0;
+  // The default-root refusal last written to stderr, so the retry on every
+  // tool call doesn't repeat it.
+  private loggedRootRefusal: string | null = null;
   private watcherStarted = false;
   /** Set when this engine holds writer.pid (#1740). */
   private writerLockRoot: string | null = null;
   // Retained synchronization ownership for each cached explicit project.
   private explicitProjects = new Map<CodeGraph, ProjectLease>();
   private defaultLease: ProjectLease | null = null;
-  private opts: Required<Omit<MCPEngineOptions, 'writerLockRoot' | 'queryPoolDefaultMax' | 'boundWorktree'>> & Pick<MCPEngineOptions, 'queryPoolDefaultMax' | 'boundWorktree'>;
+  private opts: Required<Omit<MCPEngineOptions, 'writerLockRoot' | 'queryPoolDefaultMax' | 'boundWorktree' | 'onWorkBegins'>> & Pick<MCPEngineOptions, 'queryPoolDefaultMax' | 'boundWorktree'>;
   private closed = false;
   private stopPromise: Promise<void> | null = null;
   // Off-loop read-tool pool. Workers each hold their own WAL read connections;
   // sessions without a default index open projects lazily via projectPath.
   private queryPool: QueryPool | null = null;
+  /** {@link MCPEngineOptions.onWorkBegins}, cleared once it has been called. */
+  private onWorkBegins: (() => void) | null;
 
   constructor(opts: MCPEngineOptions = {}) {
     this.opts = { readOnly: opts.readOnly ?? false, watch: opts.watch ?? true, queryPool: opts.boundWorktree ? false : opts.queryPool ?? false, queryPoolDefaultMax: opts.queryPoolDefaultMax, boundWorktree: opts.boundWorktree };
+    this.onWorkBegins = opts.onWorkBegins ?? null;
     this.toolHandler = new ToolHandler(null, opts.boundWorktree);
     this.toolHandler.setProjectLifecycle({
       open: (root, open) => {
@@ -191,6 +215,22 @@ export class MCPEngine {
   }
 
   /**
+   * A session is about to serve a tool call: work begins, whether or not a
+   * project is open yet (#3250).
+   */
+  noteToolCall(): void {
+    this.workBegins();
+  }
+
+  /** Call {@link MCPEngineOptions.onWorkBegins} the first time only. */
+  private workBegins(): void {
+    const begins = this.onWorkBegins;
+    if (!begins || this.closed) return;
+    this.onWorkBegins = null;
+    begins();
+  }
+
+  /**
    * Walk up from `searchFrom` to find the nearest `.codegraph/` and open it.
    * Idempotent: concurrent callers share one in-flight init; subsequent
    * callers after success are no-ops.
@@ -233,14 +273,18 @@ export class MCPEngine {
     // down-scan is throttled so the persistent no-default state doesn't pay a
     // directory walk on every tool call; the up-walk always runs.
     const scanDue = Date.now() - this.lastRetrySubScanAt >= RETRY_SUBSCAN_TTL_MS;
-    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false } : resolveServerRoot(searchFrom, { subprojectScan: scanDue });
+    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false, refusal: null } : resolveServerRoot(searchFrom, { subprojectScan: scanDue });
     if (scanDue) {
       this.lastRetrySubScanAt = Date.now();
       if (!res.root) this.toolHandler.setKnownSubprojects(res.candidates, searchFrom);
     }
+    // An up-walk alone can't clear a refusal the throttled down-scan found.
+    if (scanDue || res.refusal) this.noteRootRefusal(res.refusal);
     const resolvedRoot = res.root;
     if (!resolvedRoot) return;
     if (res.viaSubScan) this.logSubprojectAdoption(searchFrom, resolvedRoot);
+    // Opening a project, and the catch-up after it, is work (#3250).
+    this.workBegins();
     try {
       // Close any previously failed instance to avoid leaking resources.
       if (this.cg) {
@@ -248,15 +292,26 @@ export class MCPEngine {
         this.cg = null;
       }
       assertNoRebuild(resolvedRoot);
-      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly, strictWorktree: !!this.opts.boundWorktree });
+      // Indexes an interrupted bulk load dropped are rebuilt off this thread
+      // (#1887); the catch-up and tool calls wait for them.
+      this.cg = loadCodeGraph().openSync(resolvedRoot, { readOnly: this.opts.readOnly, strictWorktree: !!this.opts.boundWorktree, deferIndexRecovery: true });
       this.projectPath = resolvedRoot;
       this.toolHandler.setDefaultCodeGraph(this.cg);
       this.startWatching();
       this.catchUpSync();
-      this.maybeStartPool(resolvedRoot);
+      // The pool's workers open the project themselves: start them on a
+      // rebuilt one, not racing the rebuild for its write lock.
+      const opened = this.cg;
+      if (opened?.hasPendingIndexRecovery()) {
+        void opened.recoverIndexes().catch(() => { /* reported by the tool call waiting on it */ }).then(() => {
+          if (this.cg === opened) this.maybeStartPool(resolvedRoot);
+        });
+      } else {
+        this.maybeStartPool(resolvedRoot);
+      }
     } catch (err) {
       // Still failing — caller will try again on the next tool call.
-      this.toolHandler.setDefaultOpenFailure(err instanceof WslSharedIndexError ? err : null);
+      this.toolHandler.setDefaultOpenFailure(reportableOpenFailure(err));
     }
   }
 
@@ -351,17 +406,20 @@ export class MCPEngine {
     // several candidates → no default project, but SAY so (#1607): the silent
     // variant of this state read as "CodeGraph is broken" and was diagnosable
     // only by knowing to look for a missing ~/.codegraph/daemons/ entry.
-    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false } : resolveServerRoot(searchFrom);
+    const res = this.opts.boundWorktree ? { root: this.opts.boundWorktree.resolve(), candidates: [], viaSubScan: false, refusal: null } : resolveServerRoot(searchFrom);
     const resolvedRoot = res.root;
+    this.noteRootRefusal(res.refusal);
     if (!resolvedRoot) {
       // Sessions may still discover a project later via roots/list, and the
       // per-call retry re-resolves — this state is recoverable, hence stderr
       // (not a failure) + candidates surfaced through the tool-call error.
       this.projectPath = searchFrom;
       this.toolHandler.setKnownSubprojects(res.candidates, searchFrom);
-      process.stderr.write(
-        `[CodeGraph MCP] No .codegraph/ at or above ${searchFrom}: no default project, live sync disabled until an indexed project is accessed via projectPath.\n`
-      );
+      if (!res.refusal) {
+        process.stderr.write(
+          `[CodeGraph MCP] No .codegraph/ at or above ${searchFrom}: no default project, live sync disabled until an indexed project is accessed via projectPath.\n`
+        );
+      }
       if (res.candidates.length > 0) {
         const rels = res.candidates.map((c) => path.relative(searchFrom, c) || '.');
         process.stderr.write(
@@ -374,6 +432,8 @@ export class MCPEngine {
     if (res.viaSubScan) this.logSubprojectAdoption(searchFrom, resolvedRoot);
 
     this.projectPath = resolvedRoot;
+    // Opening a project, and the catch-up after it, is work (#3250).
+    this.workBegins();
     try {
       assertNoRebuild(resolvedRoot);
       const opened = await loadCodeGraph().open(resolvedRoot, { readOnly: this.opts.readOnly, strictWorktree: !!this.opts.boundWorktree });
@@ -387,8 +447,23 @@ export class MCPEngine {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[CodeGraph MCP] Failed to open project at ${resolvedRoot}: ${msg}\n`);
       // The agent otherwise hears only "no project loaded" (#995).
-      this.toolHandler.setDefaultOpenFailure(err instanceof WslSharedIndexError ? err : null);
+      this.toolHandler.setDefaultOpenFailure(reportableOpenFailure(err));
     }
+  }
+
+  /**
+   * Record why the default project is refused (a sensitive folder, #2929's
+   * guard), or clear that. Tool calls without a projectPath say why there is
+   * no default project, and stderr says it once per reason, since every such
+   * call re-resolves.
+   */
+  private noteRootRefusal(refusal: string | null): void {
+    this.toolHandler.setDefaultRootRefusal(refusal);
+    if (!refusal || refusal === this.loggedRootRefusal) return;
+    this.loggedRootRefusal = refusal;
+    process.stderr.write(
+      `[CodeGraph MCP] ${refusal} — no default project, live sync disabled. Tool calls can still pass projectPath for a project elsewhere.\n`
+    );
   }
 
   /** One stderr line when the default project came from the down-scan (#1606). */

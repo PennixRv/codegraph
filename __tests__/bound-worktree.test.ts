@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -31,10 +31,22 @@ async function index(root: string, symbol: string) {
   return cg;
 }
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const cg of graphs.splice(0)) cg.close();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 describe('native bound worktree', { timeout: 60_000 }, () => {
+  it('retains the upstream sensitive-folder refusal for an explicitly bound Git checkout', () => {
+    const home = fixture();
+    const secret = path.join(home, '.ssh');
+    fs.mkdirSync(secret);
+    git(secret, 'init', '-b', 'main');
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
+    const bound = new BoundWorktree(secret);
+    expect(() => bound.resolve()).toThrow(/Refusing to operate on sensitive directory/);
+  });
+
   it('keeps same-HEAD dirty graphs and source separate, refuses both directions and revalidates symlinks', async () => {
     const a = fixture(), b = path.join(a, 'nested-b'), c = path.join(a, 'nested-c');
     git(a, 'worktree', 'add', '--detach', b, 'HEAD');

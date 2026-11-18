@@ -42,14 +42,48 @@ import {
 import {
   atomicWriteFileSync,
   getMcpServerConfig,
+  removeFileUnlessLinked,
   removeProjectInstructionsEntry,
   validateProjectInstructionsFile,
   upsertInstructionsEntry,
 } from './shared';
-import { buildTomlTable, getTomlTable, removeTomlTable, tomlDefinesTable, upsertTomlTable } from './toml';
+import { buildTomlTable, getTomlTable, removeTomlTable, tomlDefinesTable, tomlLineBreak, upsertTomlConnection } from './toml';
 import { BoundWorktree } from '../../sync/worktree';
 
 const TOML_HEADER = 'mcp_servers.codegraph';
+export const CODEX_PROMPT_COMMAND = 'codegraph prompt-hook --agent codex';
+
+/** Plan before writing the MCP entry, so an invalid shared hook file changes nothing. */
+function promptHookPlan(enabled: boolean): { file: string; content: string; changed: boolean } | null {
+  const file = path.join(configDir('global'), 'hooks.json');
+  if (!fs.existsSync(file) && !enabled) return null;
+  const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  const doc = before ? JSON.parse(before) : {};
+  const object = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (!object(doc) || (doc.hooks !== undefined && !object(doc.hooks))) throw new Error('Cannot safely edit Codex hooks.json: invalid hook object.');
+  if (!enabled && doc.hooks === undefined) return null;
+  const hooks = doc.hooks ??= {};
+  for (const event of ['UserPromptSubmit', 'SessionStart']) {
+    const groups = hooks[event] ?? [];
+    if (!Array.isArray(groups) || groups.some(g => !object(g) || !Array.isArray(g.hooks))) throw new Error(`Cannot safely edit Codex ${event} hooks.`);
+    const owned = groups.map((g, i) => ({ g, i })).filter(({ g }) => g.hooks.some((h: unknown) => object(h) && h.command === CODEX_PROMPT_COMMAND));
+    if (owned.length > 1 || owned.some(({ g }) => g.hooks.length !== 1 || Object.keys(g).some(k => k !== 'hooks'))) {
+      throw new Error(`Cannot safely edit mixed, duplicate or customized CodeGraph ${event} hooks.`);
+    }
+    if (!enabled && owned.length === 0) continue;
+    const desired = { hooks: [{ type: 'command', command: CODEX_PROMPT_COMMAND, timeout: 2, additionalContextLimit: 0 }] };
+    if (owned.length) {
+      const { i } = owned[0]!;
+      // A vacant slot preserves every later foreign handler's native trust key.
+      groups[i] = enabled ? desired : { hooks: [] };
+      if (!enabled && i === groups.length - 1) groups.pop();
+    } else if (enabled) groups.push(desired);
+    if (groups.length) hooks[event] = groups;
+    else delete hooks[event];
+  }
+  const changed = JSON.stringify(before ? JSON.parse(before) : {}) !== JSON.stringify(doc);
+  return { file, content: JSON.stringify(doc, null, 2) + '\n', changed };
+}
 
 function configDir(loc: Location): string {
   if (loc !== 'global') return path.join(process.cwd(), '.codex');
@@ -100,6 +134,8 @@ class CodexTarget implements AgentTarget {
     if (fs.existsSync(tomlPath)) {
       try {
         const content = fs.readFileSync(tomlPath, 'utf-8');
+        // However the table is written — an indented or quoted header,
+        // dotted keys, an inline table (#2562).
         alreadyConfigured = tomlDefinesTable(content, TOML_HEADER);
       } catch { /* ignore */ }
     }
@@ -114,6 +150,8 @@ class CodexTarget implements AgentTarget {
     const files: WriteResult['files'] = [];
     if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
     if (opts.boundWorktree && loc !== 'local') throw new Error('Worktree binding requires a local Codex installation.');
+    const hook = loc === 'global' && opts.promptHook !== undefined && process.platform === 'linux'
+      ? promptHookPlan(opts.promptHook) : null;
     files.push(writeMcpEntry(loc, opts.boundWorktree));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
@@ -121,12 +159,20 @@ class CodexTarget implements AgentTarget {
     // initialize instructions. Upsert self-heals a stale pre-#529 block.
     if (loc === 'local') files.push(upsertInstructionsEntry(instructionsPath(loc)));
 
-    return loc === 'local' ? { files, notes: [trustNote()] } : { files };
+    if (hook) {
+      const existed = fs.existsSync(hook.file);
+      if (hook.changed) atomicWriteFileSync(hook.file, hook.content);
+      files.push({ path: hook.file, action: hook.changed ? existed ? 'updated' : 'created' : 'unchanged' });
+    }
+    return loc === 'local' ? { files, notes: [trustNote()] }
+      : hook && opts.promptHook ? { files, notes: ['Codex requires review and trust of these exact hooks; Pennix Lifecycle manages that step. Project trust and indexes are unchanged.'] }
+      : { files };
   }
 
   uninstall(loc: Location): WriteResult {
     const files: WriteResult['files'] = [];
     if (loc === 'local') validateProjectInstructionsFile(instructionsPath(loc));
+    const hook = loc === 'global' ? promptHookPlan(false) : null;
 
     const tomlPath = tomlConfigPath(loc);
     if (fs.existsSync(tomlPath)) {
@@ -138,9 +184,9 @@ class CodexTarget implements AgentTarget {
       const { content: nextContent, action } = result;
       if (action === 'removed') {
         if (nextContent.trim() === '') {
-          try { fs.unlinkSync(tomlPath); } catch { /* ignore */ }
+          removeFileUnlessLinked(tomlPath, '');
         } else {
-          atomicWriteFileSync(tomlPath, nextContent.trimEnd() + '\n');
+          atomicWriteFileSync(tomlPath, nextContent.trimEnd() + tomlLineBreak(content));
         }
         files.push({ path: tomlPath, action: 'removed' });
       } else {
@@ -151,6 +197,10 @@ class CodexTarget implements AgentTarget {
     }
 
     if (loc === 'local') files.push(removeProjectInstructionsEntry(instructionsPath(loc), this.id));
+    if (hook?.changed) {
+      atomicWriteFileSync(hook.file, hook.content);
+      files.push({ path: hook.file, action: 'removed' });
+    }
 
     return { files };
   }
@@ -161,7 +211,7 @@ class CodexTarget implements AgentTarget {
   }
 
   describePaths(loc: Location): string[] {
-    return loc === 'local' ? [tomlConfigPath(loc), instructionsPath(loc)] : [tomlConfigPath(loc)];
+    return loc === 'local' ? [tomlConfigPath(loc), instructionsPath(loc)] : [tomlConfigPath(loc), path.join(configDir(loc), 'hooks.json')];
   }
 }
 
@@ -200,7 +250,7 @@ function writeMcpEntry(loc: Location, boundWorktree?: string): WriteResult['file
   }
   const block = buildCodegraphBlock(boundWorktree);
   const created = existing.length === 0;
-  const { content: nextContent, action } = upsertTomlTable(existing, TOML_HEADER, block);
+  const { content: nextContent, action } = upsertTomlConnection(existing, TOML_HEADER, block);
 
   if (action === 'unchanged') {
     return { path: file, action: 'unchanged' };

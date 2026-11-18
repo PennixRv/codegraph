@@ -62,6 +62,13 @@ export interface CppAliasedType {
 interface TypeName {
   names: string[];
   templated: boolean[];
+  /**
+   * Written from the global scope (`::upb::Arena`), so looked up there alone:
+   * protobuf's `namespace hpb::internal::backend::upb { using Arena =
+   * ::upb::Arena; }` would otherwise find its own namespace's `upb::Arena`,
+   * the alias itself.
+   */
+  global?: boolean;
 }
 
 /** `SkipList<const char*, Cmp<int>>::Iterator` → `SkipList::Iterator`. */
@@ -78,6 +85,15 @@ export function stripCppTemplateArguments(text: string): string {
 
 /** The `::` segments of a written type, or null when it is not a plain (possibly qualified) type name. */
 function cppTypeName(raw: string): TypeName | null {
+  let name = TYPE_NAMES.get(raw);
+  if (name === undefined) {
+    if (TYPE_NAMES.size >= 50_000) TYPE_NAMES.clear();
+    TYPE_NAMES.set(raw, (name = readCppTypeName(raw)));
+  }
+  return name;
+}
+
+function readCppTypeName(raw: string): TypeName | null {
   const parts: string[] = [];
   const templated: boolean[] = [];
   let depth = 0;
@@ -105,13 +121,22 @@ function cppTypeName(raw: string): TypeName | null {
   }
   parts.push(part.trim());
   templated.push(args);
-  if (parts[0] === '') {
-    // A leading `::` names the global scope.
+  // A leading `::` names the global scope.
+  const global = parts[0] === '';
+  if (global) {
     parts.shift();
     templated.shift();
   }
   if (parts.length === 0 || !parts.every((p) => /^[A-Za-z_]\w*$/.test(p))) return null;
-  return { names: parts, templated };
+  return global ? { names: parts, templated, global } : { names: parts, templated };
+}
+
+/** Each written type's name, which depends on nothing else. Callers only read it. */
+const TYPE_NAMES = new Map<string, TypeName | null>();
+
+/** The scopes a written name is looked up from: the global scope alone for `::Name`. */
+function scopesFor(name: TypeName, scopes: readonly string[]): readonly string[] {
+  return name.global ? [''] : scopes;
 }
 
 /** Is a written type a pointer (`Table*`, `const Foo* const`), not counting its template arguments? */
@@ -278,8 +303,10 @@ function localAliasedType(name: string, caller: Node | null | undefined, ref: Un
   if (!caller || (caller.kind !== 'function' && caller.kind !== 'method') || caller.filePath !== ref.filePath) return undefined;
   const lines = linesOf(ref.filePath, context);
   if (!lines) return undefined;
+  const aliasLines = localAliasLines(caller, lines, context);
+  if (aliasLines.length === 0) return undefined;
   const declares = new RegExp(String.raw`\b(?:using\s+${escapeRegExp(name)}\s*=|typedef\b[^;]*\b${escapeRegExp(name)}\s*[;,])`);
-  for (const i of localAliasLines(caller, lines, context)) {
+  for (const i of aliasLines) {
     if (i > ref.line - 1) continue;
     const line = lines[i]!;
     if (line.includes(name) && declares.test(line)) return aliasedTypeIn(line, name);
@@ -292,7 +319,9 @@ type Declared =
   | { alias: Node }
   /** A class, struct or union, by its qualified name. */
   | { cls: string }
-  /** An enum, namespace or other non-class type. */
+  /** An enum, by its declarations. */
+  | { enums: Node[] }
+  /** A namespace or other non-class type. */
   | 'other'
   /**
    * Aliases naming different types, none of them the calling file's: rocksdb's
@@ -306,8 +335,14 @@ type Visible = (n: Node) => boolean;
 
 /** C and C++ declarations named `name` that can stand for a type or scope. */
 function typeDeclarations(name: string, context: ResolutionContext, visible?: Visible): Node[] {
-  return context.getNodesByName(name).filter((n) =>
-    isCFamily(n) && (n.kind === 'type_alias' || DECLARING_KINDS.has(n.kind)) && (!visible || visible(n)));
+  let memo = TYPE_DECLARATIONS.get(context);
+  if (!memo) TYPE_DECLARATIONS.set(context, (memo = new Map()));
+  let declared = memo.get(name);
+  if (!declared) {
+    declared = context.getNodesByName(name).filter((n) => isCFamily(n) && (n.kind === 'type_alias' || DECLARING_KINDS.has(n.kind)));
+    memo.set(name, declared);
+  }
+  return visible ? declared.filter((n) => visible(n)) : declared;
 }
 
 function declaredIn(
@@ -325,6 +360,8 @@ function declaredIn(
   if (here.length === 0) return undefined;
   // `typedef struct Node Node;` declares the struct as well.
   if (here.some((n) => CLASS_KINDS.has(n.kind))) return { cls: qualified };
+  const enums = here.filter((n) => n.kind === 'enum');
+  if (enums.length > 0) return { enums };
   if (here.some((n) => n.kind !== 'type_alias')) return 'other';
   const alias = pickAlias(here, ref, context);
   return alias ? { alias } : { ambiguous: here };
@@ -351,30 +388,109 @@ function pickAlias(aliases: Node[], ref: UnresolvedRef, context: ResolutionConte
 }
 
 const BASES = new WeakMap<ResolutionContext, Map<string, string[]>>();
+/** Per context: a name → the C and C++ declarations of a type of that name. */
+const TYPE_DECLARATIONS = new WeakMap<ResolutionContext, Map<string, Node[]>>();
 const TEMPLATE_PARAMETERS = new WeakMap<ResolutionContext, Map<string, ReadonlySet<string>>>();
 
 /** Drop the memos of class bases, template parameters and local aliases (see ReferenceResolver.clearCaches). */
 export function clearCppTypeAliasMemos(context: ResolutionContext): void {
   BASES.delete(context);
+  TYPE_DECLARATIONS.delete(context);
   TEMPLATE_PARAMETERS.delete(context);
   LOCAL_ALIAS_LINES.delete(context);
 }
 
+/**
+ * What may come between a `template <…>` head and where its declaration
+ * starts: protobuf's `template <typename T, typename... Args>` /
+ * `PROTOBUF_NDEBUG_INLINE static T* Create(…)`.
+ */
+const HEAD_SPECIFIERS = String.raw`(?:\s*(?:\[\[[^\]]*\]\]|(?:static|inline|constexpr|consteval|virtual|explicit|friend|extern)\b|[A-Z][A-Z0-9]*_[A-Z0-9_]*\b(?:\s*\([^()]*\))?))*\s*`;
+const HEAD_ENDS_DECLARATION = new RegExp(String.raw`^template\s*<([\s\S]*)>${HEAD_SPECIFIERS}$`);
+const ONLY_SPECIFIERS = new RegExp(`^${HEAD_SPECIFIERS}$`);
+
 /** Add the parameter names of the `template <…>` header that ends right where a declaration starts. */
 function collectTemplateHeader(lines: readonly string[], startLine: number, startColumn: number, names: Set<string>): void {
-  const before = [...lines.slice(Math.max(0, startLine - 4), startLine - 1), (lines[startLine - 1] ?? '').slice(0, startColumn)].join('\n');
+  // (A header can take several lines: fmt's `join` spends four on its parameters' defaults.)
+  const before = [...lines.slice(Math.max(0, startLine - 9), startLine - 1), (lines[startLine - 1] ?? '').slice(0, startColumn)].join('\n');
   const at = before.lastIndexOf('template');
-  // Specifiers, attributes and macros may come between the header and where
-  // the declaration starts: protobuf's `template <typename T, typename...
-  // Args>` / `PROTOBUF_NDEBUG_INLINE static T* Create(…)`.
-  const header = at < 0 ? null : /^template\s*<([\s\S]*)>(?:\s*(?:\[\[[^\]]*\]\]|(?:static|inline|constexpr|consteval|virtual|explicit|friend|extern)\b|[A-Z][A-Z0-9]*_[A-Z0-9_]*\b(?:\s*\([^()]*\))?))*\s*$/.exec(before.slice(at));
+  const header = at < 0 ? null : HEAD_ENDS_DECLARATION.exec(before.slice(at));
   if (!header) return;
-  for (const item of splitTopLevel(header[1]!)) {
-    // `typename T = int`, `template <typename> class Policy`, `typename... Ts`, `int N`.
-    const declared = stripCppTemplateArguments(item).split('=')[0]!;
-    const name = /([A-Za-z_]\w*)\s*$/.exec(declared)?.[1];
-    if (name && name !== 'typename' && name !== 'class') names.add(name);
+  for (const item of splitTopLevel(header[1]!)) addTemplateParameter(item, names);
+}
+
+/** Add the name one parameter of a `template <…>` header declares. */
+function addTemplateParameter(item: string, names: Set<string>): void {
+  // `typename T = int`, `template <typename> class Policy`, `typename... Ts`, `int N`.
+  const declared = stripCppTemplateArguments(item).split('=')[0]!;
+  const name = /([A-Za-z_]\w*)\s*$/.exec(declared)?.[1];
+  if (name && name !== 'typename' && name !== 'class') names.add(name);
+}
+
+/** How far a `template <…>` header may run; one that runs longer is not read. */
+const MAX_TEMPLATE_HEADER = 1000;
+
+/** The `>` closing the template parameter list opened at `open`, or -1 when a `;` or a brace comes first. */
+function templateHeaderEnd(text: string, open: number): number {
+  let depth = 0;
+  let parens = 0;
+  for (let i = open; i < text.length && i < open + MAX_TEMPLATE_HEADER; i++) {
+    const c = text[i]!;
+    if (c === '(' || c === '[') parens++;
+    else if (c === ')' || c === ']') parens = Math.max(0, parens - 1);
+    // `N > 0` in a default argument is written in parentheses.
+    else if (parens > 0) continue;
+    else if (c === '<') depth++;
+    else if (c === '>') {
+      if (--depth === 0) return i;
+    } else if (c === ';' || c === '{' || c === '}') return -1;
   }
+  return -1;
+}
+
+/**
+ * The declarators of the `typedef` whose keyword ends at `from`, up to its
+ * `;`: those after the body of a type it defines (`typedef struct {…} X;`).
+ */
+function typedefDeclarators(text: string, from: number): string {
+  let depth = 0;
+  let start = from;
+  for (let i = from; i < text.length && i < from + 4 * MAX_TEMPLATE_HEADER; i++) {
+    const c = text[i]!;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      if (--depth < 0) return '';
+      if (depth === 0) start = i + 1;
+    } else if (c === ';' && depth === 0) return text.slice(start, i);
+  }
+  return '';
+}
+
+/**
+ * The names C++ source text declares as template parameters — every
+ * `template <…>` header's, `Traits` of `typename Traits = buffer_traits` —
+ * or as aliases: `using X = …;`, `typedef … X;`, `typedef struct {…} X;`,
+ * `typedef void (*X)(int);`. Function and macro bodies count, though the
+ * index has no node for what they declare.
+ */
+export function cppTypeNamesDeclared(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of text.matchAll(/\btemplate\s*</g)) {
+    const open = m.index! + m[0].length - 1;
+    const close = templateHeaderEnd(text, open);
+    if (close > open) for (const item of splitTopLevel(text.slice(open + 1, close))) addTemplateParameter(item, names);
+  }
+  for (const m of text.matchAll(/\busing\s+([A-Za-z_]\w*)\s*(?:\[\[[^\]]*\]\]\s*)?=(?!=)/g)) names.add(m[1]!);
+  for (const m of text.matchAll(/\btypedef\b/g)) {
+    for (const declarator of splitTopLevel(typedefDeclarators(text, m.index! + m[0].length))) {
+      // `(*Handler)` of a pointer to a function or member; else the last name,
+      // past a function type's parameters and an array's bounds.
+      const name = /\(\s*(?:[A-Za-z_]\w*\s*::\s*)*[*&^]+\s*(?:const\s+)?([A-Za-z_]\w*)\s*\)/.exec(declarator)?.[1] ??
+        /([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)*$/.exec(declarator.replace(/\([^()]*\)\s*(?:const\s*)?$/, ''))?.[1];
+      if (name) names.add(name);
+    }
+  }
+  return names;
 }
 
 /**
@@ -430,7 +546,7 @@ function baseClassesOf(cls: string, context: ResolutionContext): string[] {
     for (const part of splitTopLevel(text.slice(colon + 1, brace))) {
       const name = cppTypeName(part.replace(/\b(?:public|protected|private|virtual)\b/g, ' '));
       if (!name) continue;
-      const base = classNamed(name.names, scopesWithin(parentScope(cls)), context);
+      const base = classNamed(name.names, scopesFor(name, scopesWithin(parentScope(cls))), context);
       if (base && base !== cls && !bases.includes(base)) bases.push(base);
     }
   }
@@ -518,7 +634,8 @@ export function resolveCppAliasedType(rawType: string, ref: UnresolvedRef, conte
   if (!name) return undefined;
   const caller = context.getNodeById?.(ref.fromNodeId);
   const scope = callerScope(caller);
-  const local = localAliasedType(name.names[0]!, caller, ref, context);
+  // (`::Foo` is no alias the calling function declares.)
+  const local = name.global ? undefined : localAliasedType(name.names[0]!, caller, ref, context);
   const resolved = local !== undefined
     ? expand(local, name.names.slice(1), name.templated.slice(1), scope, ref, context, 1,
       caller ? templateParametersAround(caller, context) : undefined)
@@ -580,13 +697,49 @@ export function cppClassNamed(
 ): CppNamedClass {
   const name = cppTypeName(written);
   if (!name) return null;
-  const { found, next } = lookupSegments(name, scopes, ref, context, visible);
+  return classFound(name, lookupSegments(name, scopes, ref, context, visible), ref, context);
+}
+
+/** What a C or C++ type name names when it is looked up for what it declares (see cppTypeNamed). */
+export type CppNamedType = CppNamedClass | { enums: Node[] };
+
+/**
+ * What a C or C++ type written as `written` declares, looked up as cppClassNamed
+ * looks it up: the class, an enum, or the alias the name ends on, not followed
+ * to the type it names, so an edge says what the code wrote.
+ */
+export function cppTypeNamed(
+  written: string,
+  scopes: readonly string[],
+  ref: UnresolvedRef,
+  context: ResolutionContext,
+  visible?: Visible,
+): CppNamedType {
+  const name = cppTypeName(written);
+  if (!name) return null;
+  // (A reference carries its name without template arguments, so an alias
+  // template can't be told by them. A name that finds one was written with them.)
+  const lookup = lookupSegments({ ...name, templated: name.names.map(() => true) }, scopes, ref, context, visible);
+  const { found, next } = lookup;
+  if (found && typeof found === 'object' && ('enums' in found || ('alias' in found && next === name.names.length))) return found;
+  return classFound(name, lookup, ref, context);
+}
+
+/** The class a lookup of `name` found, followed through the alias it reached. */
+function classFound(
+  name: TypeName,
+  { found, next }: { found: Declared; next: number },
+  ref: UnresolvedRef,
+  context: ResolutionContext,
+): CppNamedClass {
   if (found === undefined) return undefined;
-  if (typeof found !== 'object') return null;
+  if (typeof found !== 'object' || 'enums' in found) return null;
   if ('cls' in found) return found;
   if ('ambiguous' in found) {
-    // An alias each `#if` arm declares differently: the first declaration.
-    const [first] = [...found.ambiguous].sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startLine - b.startLine);
+    // An alias each `#if` arm declares differently: the first declaration, by
+    // file in code-unit order (localeCompare follows the host's locale).
+    const [first] = [...found.ambiguous].sort((a, b) =>
+      (a.filePath < b.filePath ? -1 : a.filePath > b.filePath ? 1 : 0) || a.startLine - b.startLine);
     return next === name.names.length ? { alias: first! } : null;
   }
   const alias = found.alias;
@@ -621,8 +774,8 @@ export function cppAliasedTypeWritten(
 ): { text: string; alias: Node } | null | undefined {
   const name = cppTypeName(written);
   if (!name) return undefined;
-  const { found, next } = lookupSegments(name, scopes, ref, context);
-  if (!found || typeof found !== 'object' || 'cls' in found) return undefined;
+  const { found, next } = lookupSegments(name, scopesFor(name, scopes), ref, context);
+  if (!found || typeof found !== 'object' || 'cls' in found || 'enums' in found) return undefined;
   if ('ambiguous' in found || next !== name.names.length || isAliasTemplate(found.alias, context)) return null;
   const text = declarationText(found.alias, context);
   const aliased = text ? aliasedTypeIn(text, found.alias.name) : null;
@@ -643,6 +796,76 @@ export function cppParentScope(qualified: string): string {
 /** The template parameters in scope where `node` is declared: its own `template <…>` header and its class templates'. */
 export function cppTemplateParameters(node: Node, context: ResolutionContext): ReadonlySet<string> {
   return templateParametersAround(node, context);
+}
+
+/** One parameter of a C++ `template <…>` head, in order: an unnamed one holds its place. */
+export interface CppTemplateParameter {
+  name: string | null;
+  /** `typename... Ts`: every argument from here on. */
+  pack: boolean;
+  /** Its default, as written: `TcParser` of `typename Parser = TcParser`. */
+  fallback: string | null;
+}
+
+/** One item of a `template <…>` head. */
+function templateParameter(item: string): CppTemplateParameter {
+  const declared = stripCppTemplateArguments(item);
+  const at = declared.indexOf('=');
+  const name = /([A-Za-z_]\w*)\s*$/.exec(at < 0 ? declared : declared.slice(0, at))?.[1];
+  // (A default can hold a `=` of its own, so it is read from the item as written.)
+  const eq = item.indexOf('=');
+  return {
+    name: name && name !== 'typename' && name !== 'class' ? name : null,
+    pack: declared.includes('...'),
+    fallback: at < 0 || eq < 0 ? null : item.slice(eq + 1).trim(),
+  };
+}
+
+/** The parameters of a `template <…>` head, from what its brackets hold. */
+export function cppTemplateParametersIn(inner: string): CppTemplateParameter[] {
+  return inner.trim() ? splitTopLevel(inner).map(templateParameter) : [];
+}
+
+/**
+ * The `template <…>` heads right before a declaration, outermost first, each
+ * with its parameters in order: one for a template, none for anything else,
+ * and two for a member template defined outside its class template
+ * (`template <class T> template <class U> void C<T>::f()`).
+ */
+export function cppTemplateHeads(node: Node, context: ResolutionContext): CppTemplateParameter[][] {
+  const lines = linesOf(node.filePath, context);
+  if (!lines) return [];
+  const before = [...lines.slice(Math.max(0, node.startLine - 13), node.startLine - 1), (lines[node.startLine - 1] ?? '').slice(0, node.startColumn)].join('\n');
+  const heads: CppTemplateParameter[][] = [];
+  const starts = [...before.matchAll(/\btemplate\s*</g)];
+  let end = before.length;
+  for (let i = starts.length - 1; i >= 0; i--) {
+    const open = starts[i]!.index! + starts[i]![0].length - 1;
+    const close = templateHeaderEnd(before, open);
+    if (close < 0 || !ONLY_SPECIFIERS.test(before.slice(close + 1, end))) break;
+    const inner = before.slice(open + 1, close);
+    heads.unshift(cppTemplateParametersIn(inner));
+    end = starts[i]!.index!;
+  }
+  return heads;
+}
+
+/**
+ * The type an alias in scope where `ref` is made declares, as written, with
+ * the alias when the index holds one: `typename TypeParam::KeyGen` for
+ * `using KeyGen = typename TypeParam::KeyGen;` in the calling function, or an
+ * alias of the calling function's class. Undefined when no such alias has
+ * that name.
+ */
+export function cppAliasWrittenAt(name: string, ref: UnresolvedRef, context: ResolutionContext): { text: string; alias?: Node } | undefined {
+  const caller = context.getNodeById?.(ref.fromNodeId);
+  const local = localAliasedType(name, caller, ref, context);
+  if (local !== undefined) return local === null ? undefined : { text: local };
+  const found = lookupUnqualified(name, false, scopesWithin(callerScope(caller)), ref, context);
+  if (!found || typeof found !== 'object' || !('alias' in found)) return undefined;
+  const text = declarationText(found.alias, context);
+  const written = text ? aliasedTypeIn(text, found.alias.name) : null;
+  return written ? { text: written, alias: found.alias } : undefined;
 }
 
 /**
@@ -689,7 +912,7 @@ function follow(
   context: ResolutionContext,
   hops: number,
 ): CppAliasedType | null | undefined {
-  const { found, next } = lookupSegments(name, scopesWithin(scope), ref, context);
+  const { found, next } = lookupSegments(name, scopesFor(name, scopesWithin(scope)), ref, context);
   if (!found || typeof found !== 'object' || !('alias' in found)) return undefined;
   const alias = found.alias;
   if (hops >= MAX_HOPS) return null;
@@ -721,11 +944,13 @@ function expand(
   if (!target || parameters?.has(target.names[0]!)) return null;
   const pointer = isCppPointerType(written);
   const names = [...target.names, ...rest];
-  const further = follow({ names, templated: [...target.templated, ...restTemplated] }, scope, ref, context, hops);
+  const further = follow({ names, templated: [...target.templated, ...restTemplated], global: target.global }, scope, ref, context, hops);
   if (further === null) return null;
   if (further) return { ...further, pointer: further.pointer || pointer };
-  const cls = classNamed(names, scopesWithin(scope), context);
+  // `::upb::Arena` is looked up from the global scope, whatever scope writes it.
+  const from = target.global ? '' : scope;
+  const cls = classNamed(names, scopesWithin(from), context);
   const classTemplate = !!cls && context.getNodesByQualifiedName(cls)
     .some((n) => isCFamily(n) && CLASS_KINDS.has(n.kind) && templateParametersAround(n, context).size > 0);
-  return { target: target.names, rest: [...rest], scope, pointer, classTemplate };
+  return { target: target.names, rest: [...rest], scope: from, pointer, classTemplate };
 }

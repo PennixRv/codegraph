@@ -12,6 +12,31 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Pennix
+
+- 同步冻结上游 v1.6.3 后的 main，保留工作树隔离、来源核验、受管升级和 Linux x64 双包边界。
+- Linux Codex 增加有界分层主动路由：已受宿主信任且具有独立可用索引的当前项目可预取紧凑调用关系，其他相关问题及会话恢复仅提示；不阻断文本工具，不自动建图。Lifecycle 管理原生 Hook 定义与确切信任。
+
+### Fixes
+
+- In Python, `import time` no longer links the importing file to a project function that happens to be named `time`, so such a function stops listing every file that imports the standard library module among its callers and in its impact. The same goes for `json`, `copy`, `random`, `logging` and any other module, and for a fallback variable like `brotli = None` beside a guarded `import brotli`. Thanks @inth3shadows for the report. (#3239)
+- In Rust, a call through a module that a glob `use` brings in, like `gzip::write()` in a test module with `use super::*`, or that a `use` inside the function names, now links to that module's function again. Thanks @Egrn for the report and @mohitdixit02. (#3253)
+- CodeGraph no longer takes git's index lock while it checks your repository for changes, so a `git add` in a pre-commit hook, a commit or a checkout that runs while CodeGraph syncs no longer fails with "index.lock: File exists". Thanks @iamclaudia-ai for the report. (#3295)
+- `codegraph impact` and `codegraph_impact` are as fast as they were in 1.6.2 again, with the same results: 1.6.3 read each symbol's dependents in a way that slowed down every step of the walk. Thanks @inth3shadows for the report and the fix, and @Marcos-199-GitHub for #3285. (#3248)
+- When the CodeGraph server's catch-up sync on a large project is stopped because the tool calls it is serving keep its write-ahead log from shrinking, it now waits before trying again, a little longer each time, instead of starting over every second while you keep working. Thanks @kiliman for the report. (#3273)
+- A CodeGraph MCP server started in a folder with no index no longer starts its separate hang-watchdog process until the session first calls a tool or opens a project, so sessions that only list the tools, as many hosts open them, use less memory. Thanks @AiurArtanis for the report and @johnhldiver-beep for #3257. (#3250)
+- A CodeGraph server whose project folder is deleted, like a removed git worktree, now exits within about half a minute, closing its file watcher and dropping its entry from `codegraph list`, instead of running until its last session ends and it times out. On Windows it also stops keeping that folder's index files from being deleted. Thanks @deniskern for the report and @johnhldiver-beep for #3259. (#3245)
+- In JavaScript and TypeScript, `this.findAll()` in a class that wraps an imported helper of the same name now links to the class's own method instead of the imported helper. Thanks @inth3shadows for the report. (#2954)
+- In TypeScript, a call on a parameter or local named like an import, like `stream.write()` inside `stream(c, async (stream) => …)`, now goes by that parameter or local, and a method called on an imported function no longer links to the function itself; the same mistake through `require` was already fixed in 1.6.3. Thanks @inth3shadows for the report. (#2953)
+- In JavaScript and TypeScript, a call to a name that a function around the caller declares for itself, like a helper an inner arrow function calls, now links to that local declaration instead of the file's import of the same name. Thanks @inth3shadows for the report. (#2949)
+- In JavaScript and TypeScript, a call to a helper declared inside a `describe(…)` block, or any other callback, now links to the helper that block declares instead of a same-named one from another block that happens to sit nearer. Thanks @inth3shadows for the report. (#2944)
+- In JavaScript and TypeScript, a call inside a spread, like `<input {...register('email')} />` with `register` taken from `useForm()`, no longer links to an unrelated project function that shares the name. Thanks @inth3shadows for the report. (#2962)
+- In JavaScript and TypeScript, a module namespace that another module hands on by name, like zod's `import { z } from 'zod'` of `import * as z from './external'; export { z }`, or `export * as ns from './schemas'`, now leads `z.string()` to what that module exports, as `import * as z` does, instead of a same-named method elsewhere. Thanks @inth3shadows for the report. (#2951)
+- In JavaScript and TypeScript, an import through a barrel of several `export *` lines now links to the module that exports the name itself, whichever line comes first, instead of a same-named method of an object another module exports. Thanks @inth3shadows for the report. (#3233)
+- In JavaScript and TypeScript, a method called on a variable that a library call fills in, like `const root = createRoot(el)` from react-dom, `net.createServer()` or `canvas.getContext('2d')`, no longer links to the one project method that happens to share its name. Thanks @inth3shadows for the report. (#2947)
+- In TypeScript, a method called on a variable a class's static factory fills in, like `const writer = DatabaseConnection.initialize(path)`, now links to the method of the class the factory says it returns, instead of a class guessed from the variable's name. Thanks @inth3shadows for the report. (#2946)
+- In TypeScript, a call through an interface's function-typed property, like `matcher.snapshot()`, no longer links to an unrelated class's method of the same name; a class that implements the interface, or builds it, is still linked. Thanks @inth3shadows for the report. (#3035)
+- In JavaScript and TypeScript, a call two or more fields deep from `this`, like `this.cache.list.push(1)` or `this.extractor.functionTypes.includes(type)`, no longer links to an unrelated project method named like JavaScript's own `push`, `includes`, `has` or `set`, or to a property that merely shares the name. Thanks @inth3shadows for the report. (#2948)
 
 ## [1.6.2-pennix.6] - 2026-11-16
 
@@ -189,6 +214,551 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In JavaScript and TypeScript, a default import now links to what the module's `export default` statement exports, wherever the statement sits in the file. Before, a module that declares its default, like `export default function Vans() {…}` or `export default class Store {…}`, had its default import linked to the first function it exports instead: in a React Router data-router app, where a page exports its `loader` or `action` above the page component, `import Vans, { loader as vansLoader } from './pages/Vans'` made the route `/vans` and every use of `Vans` lead to the loader. A component file that also exports a styled or memoized component no longer hands its default import to that component, and an anonymous default, like `export default function () {…}` or `export default () => …`, is no longer linked to a function exported beside it or nested inside it. A module loaded with `require('./x').default` is read the same way. Re-index JavaScript and TypeScript projects after upgrading.
 - In React and Vue, a tag for a component the file imports from a package, like `<Button>` from antd, `<Typography>` from `@mui/material/Typography`, `<Link>` from react-router-dom or `<Card>` from ant-design-vue, no longer links to a component, function or class in your repository that only shares its name. Before, the tag linked to whatever the repository had by that name, so `codegraph_explore`, callers and impact followed renders that never happen: in SigNoz, antd's `<Button>` tags showed up as callers of a styled link on its 404 page, and in Material UI dashboards like mantis and berry, `<Typography>` and `<Button>` tags showed up as callers of the theme's style overrides. A package here is one that a `package.json` above the file lists and that no file in the repository answers to. A tag imported through a path alias like `components/Modal`, from a workspace package of the repository, or under a name no `package.json` lists still links as before. Re-index React and Vue projects after upgrading.
 - In React with TypeScript, a component that renders a generic component and passes it type arguments, like outline's `<PaginatedList<Document> items={…} />` or excalidraw's `<DropdownMenuItemContentRadio<"contain" | "overlap"> …>`, now links to the component it renders. Before, a tag followed by type arguments was skipped, so the generic component looked unused by the screens that render it, and `codegraph_explore`'s call paths, callers and impact stopped short of it. Re-index React projects after upgrading.
+## [1.6.3] - 2026-11-17
+
+### Highlights
+
+- **Nine more agents and editors.** `codegraph install` now sets up IBM Bob, Factory Droid, Windsurf, Qwen Code, DeepSeek Harness, Grok Build, Kimi Code, the Qoder CLI and Pi.
+- **Security fixes.** A sensitive folder such as `~/.ssh` can no longer be opened as a project through a link, a junction or another spelling of its path, and the bundled Node.js moves to 24.22.1, which fixes CVE-2026-111497.
+- **More accurate links in every language.** Hundreds of fixes help calls, imports and types reach the code they mean, most of all in JavaScript and TypeScript, Go, C and C++, Rust, Python, C#, Java and Dart. Tauri, CodeIgniter 3, Drupal services and plugins, Next.js middleware and MediatR handlers are now covered too.
+- **Better answers for your agent.** `codegraph_explore` no longer stalls on a large project, answers a pasted log or file in seconds, finds code named in Chinese, Japanese or Korean, and its Flow reaches every symbol your query names.
+- **New commands.** `codegraph cycles` finds files that import each other in a circle, `codegraph implementations` lists what implements a type, `codegraph files --format package` splits a monorepo by package, and `codegraph init --local-only` keeps `.codegraph/` out of git.
+- **A steadier background server.** A new session no longer waits minutes when the background server is stuck, upgrading during a session switches it to the new version, and `codegraph sync` and the file watcher keep links right as files are added, deleted and restored.
+- **Faster and lighter.** Commands that only read the index start faster, and indexing takes less CPU and memory, most of all on small projects and on C and C++.
+- **Upgrading:** re-index your projects after this release with `codegraph index`. Most of these fixes are written while indexing, and `codegraph status` and your agent both tell you when an index was built by an older version.
+
+### Security
+
+- A sensitive folder like `~/.ssh`, `/etc` or `C:\Windows` can no longer be used as a project through a link or junction, a differently capitalized name, a `\\?\` path or a path to a missing folder inside one. Before, any of these let an agent's query read the files inside. Thanks @mixxer. (#2929)
+- The MCP server no longer uses a sensitive folder such as `~/.ssh` or `/etc` as a session's default project, whether it came from the agent's workspace, the folder it started in or `--path`. Before, a session started in one that held an index answered from the files inside. (#3012)
+- The bundled Node.js runtime moves to 24.22.1, Node's October security release, which fixes CVE-2026-111497, a high-severity out-of-bounds write in its Brotli decoder, and every release now checks the Node it bundles against the checksums nodejs.org publishes. It also fixes a Windows crash as a command like `codegraph sync` exits after its work is done. Thanks @Ancienttwo and @IdealBoy709. (#2617, #2780)
+
+### New Features
+
+- `codegraph files --format package` and `codegraph_files` with `format: "package"` now group files by their nearest `package.json` or `composer.json`, so a monorepo splits into its workspaces. Thanks @LuisAlbertoMK. (#1871)
+- In C#, MediatR `Send` and `Publish` now reach handlers written against the project's own interfaces, like `ICommandHandler<T>`, or a package's, like the Mediator library's, with no setup. Thanks @PressXtoChris.
+- `codegraph files --json` now marks test files, `--tests` and `--no-tests` filter the list, and `codegraph node --file` says "test file" in its header. Thanks @maxmilian. (#1877)
+- `codegraph install` now sets up IBM Bob, for Bob IDE and Bob Shell, adding the CodeGraph MCP server to `~/.bob/settings/mcp.json` or a project's `.bob/mcp.json`. Thanks @QuentinDstl.
+- ASP.NET Razor views now link to the JavaScript their inline `<script>` blocks call, and `codegraph_explore`'s blast radius lists a symbol's views, like `.cshtml`, `.razor` or `.vue` files, on their own. Thanks @Johnny-Tsai.
+- `codegraph install` now sets up Factory Droid, adding the CodeGraph MCP server to `~/.factory/mcp.json` or a project's `.factory/mcp.json` and a short section to `AGENTS.md`. Thanks @Rubyj and @KrystianMarek.
+- `codegraph install` now sets up Windsurf, adding the CodeGraph MCP server to `~/.codeium/windsurf/mcp_config.json`, which Devin, Windsurf's new name, imports by default. Thanks @SEPURI-SAI-KRISHNA.
+- Tauri apps now connect frontend and Rust: `codegraph_explore`, callers and impact follow `invoke` calls, tauri-specta's typed commands and your wrappers to their `#[tauri::command]`, and events both ways. Thanks @vdavid and @nk33-dev.
+- `codegraph install` now sets up Qwen Code: it adds the CodeGraph MCP server to `settings.json`, keeping its comments, and a short section to `QWEN.md`, and can auto-allow CodeGraph's tools. Thanks @ZevGit and @LiangshouX.
+- `codegraph install` now sets up DeepSeek Harness (`dsh`): one entry in `~/.dsh/cordis.patch.yml` covers every profile, plus a short section in `~/.dsh/AGENTS.md`. Thanks @hfldqwe.
+- `codegraph install` now sets up Grok Build, adding the CodeGraph MCP server to `~/.grok/config.toml` or a project's `.grok/config.toml`, plus a short rule in `rules/codegraph.md`. Thanks @ximing.
+- `codegraph install` now sets up Kimi Code, adding the CodeGraph MCP server to `~/.kimi-code/mcp.json` or a project's `.kimi-code/mcp.json`, plus a short section in `AGENTS.md`. Thanks @zhouxbalabala.
+- `codegraph install` now sets up the Qoder CLI, adding the CodeGraph MCP server to `~/.qoder/settings.json` or a project's `.qoder/settings.local.json`. Thanks @greatjackzhou.
+- `codegraph install` now sets up Pi, adding the CodeGraph MCP server to `~/.pi/agent/mcp.json` or a project's `.pi/mcp.json`, plus a short section in `AGENTS.md`. Thanks @roymina.
+- CodeGraph's MCP server now gives agents and editors its display name and icon, so one that shows them, like the Codex app, lists CodeGraph by name and logo. Thanks @fedosov.
+- Commands that only read the index, like `codegraph callers`, `query`, `node`, `impact` and `explore`, now start faster and use less memory, as do the MCP server's first handshake and your agent's prompt hook.
+- `codegraph status` now shows when only some of a language's files yielded symbols and warns when none did; `codegraph status --strict` exits non-zero on that warning or a missing, unfinished or out-of-date index. Thanks @ferrine. (#1658)
+- After an upgrade, your agent's first answer for a project whose index predates the engine now warns once, naming the version that built it and `codegraph index`, and `codegraph_status` shows both versions. Thanks @cbeaulieu-gt. (#1852)
+- `codegraph serve --mcp --no-telemetry` turns telemetry off for one MCP server entry, so a shared MCP config can opt out without an environment variable. Thanks @danusha2345. (#1908)
+- `codegraph implementations <name>` lists the types that implement or extend a trait, interface or class, with each one's file, line and whether it's test code; `--depth` follows subclasses of subclasses. Thanks @danusha2345. (#2833)
+- Indexing is faster, most of all on C and C++ and a good deal on Rust, Java and TypeScript, because resolving a call repeats less work for each name it looks at.
+- Indexing a small project takes much less CPU and memory: CodeGraph starts only the threads a project needs, and a file that's slow to parse no longer holds up the others.
+- Set `CODEGRAPH_SYNTH_MIN_INTERVAL_MS` to limit how often live syncs rebuild the project-wide callback and event links, which on a large TypeScript or Vue repo happens on almost every edit. Thanks @danusha2345. (#2911)
+- Indexing a large project takes less memory at its peak.
+- Indexing a large project runs fewer threads and finishes as soon, with less CPU and memory.
+- For contributors, the test suite now runs on Vitest 4 and working in this repository needs Node 22.12 or newer; installing and using CodeGraph doesn't change. Thanks @danusha2345.
+- New `codegraph cycles` command lists the groups of files that import each other in a circle, as text or `--json`, and exits 1 when it finds any, so it works as a pre-commit or CI check. Thanks @jiangyq9 and @goutham80808. (#888)
+- `codegraph init --local-only` keeps `.codegraph/` out of git entirely, so nothing of CodeGraph's shows in `git status`, and works on a project that's already set up. Thanks @jadchene, @jiangyq9, @Wood-Q and @walterf3. (#910)
+- CodeIgniter 3 projects are now understood: controller methods and `routes.php` entries become routes, HMVC modules included, and calls through what `$this->load` loads link to the method they reach. Thanks @darkspock.
+- In Drupal, services from `*.services.yml`, plugin definitions and `#[Hook]` methods are now in the graph, and a call through `\Drupal::service('x')` reaches the method on that service's class. Thanks @mikedamoiseau and @marcelovani.
+- In Next.js, a route now links to the `proxy.ts` or `middleware.ts` that runs before it, following `config.matcher`, so impact, callers and `codegraph_explore` show which routes a change to it reaches. Thanks @RIGOandre.
+
+### Fixes
+
+#### Windows
+
+- On Windows, deleting the folder a link in your project points to, like a junction to a library outside it, no longer makes CodeGraph's server use a full CPU core or stop picking up your edits. Thanks @L0garithmic.
+- On Windows, a project at the root of a drive, like a mapped network drive such as `Z:\`, a `subst` drive or a network share's root, now indexes instead of refusing every file as "Path traversal blocked". Thanks @Kamilslaoui93.
+- On Windows, a temp folder on a drive that isn't there, like an unplugged disk or an unmounted RAM drive, no longer hangs every `codegraph` command at start.
+- On Windows, a git worktree inside your main checkout, like one under `.claude/worktrees/`, is now recognized however its path is written, such as with the lowercase drive letter VS Code and Cursor pass. Thanks @nk33-dev.
+- The Windows installer, `irm …/install.ps1 | iex`, no longer stops with "(403) Forbidden" once GitHub's anonymous request limit is used up, and a version set without its `v`, like `CODEGRAPH_VERSION=1.6.2`, now installs. Thanks @hiyochi.
+- In JavaScript and TypeScript files with Windows (CRLF) line endings, a store exported on a later line, like `export default useStore;`, now has its actions indexed, as with Unix line endings.
+- On Windows, a Swift call written after `try!`, like `try! Settings.Defaults.load()`, now links to what it calls, as it already did on macOS and Linux.
+
+#### Setup, the background server and the CLI
+
+- The Claude Code prompt hook now goes by what you typed, skipping the status notes Claude Code's desktop app puts before your prompt, and gives no context to a message from another session. Thanks @WonderMr and @yang0228. (#2635)
+- Upgrading CodeGraph while an agent session is open no longer leaves the old version's background server in charge: the first session from the new install replaces it with a current one. Thanks @lipchey. (#2335)
+- `codegraph index` no longer stops with advice to run `codegraph daemon stop`, which doesn't exist, when a stale lock names a process that isn't CodeGraph; it clears that lock and rebuilds. Thanks @inth3shadows and @danusha2345. (#2770)
+- The shared background server is no longer killed with "Main thread unresponsive" while it updates another project's index, like one a session names with `projectPath`. Thanks @mradwankhalil. (#2404)
+- A project a session queries through `projectPath` is now let go once it has gone its own idle time without a query, instead of staying locked until another project's idle time ran out. Thanks @bompus. (#2087)
+- An MCP tool call whose `projectPath` names a file inside a project now answers from that project, instead of failing with "Path is not a directory". Thanks @inth3shadows and @maxmilian. (#2982)
+- An index left incomplete by an indexing run stopped partway no longer gets the background server killed with "Main thread unresponsive" on every start; it is now repaired in the background. Thanks @cbeaulieu-gt. (#1887)
+- A new agent session no longer waits minutes for its first answer when the background server is stuck: it gives up within seconds, answers on its own and switches back once the server restarts.
+- The background server now gives back the memory a burst of large queries left behind once it's idle, and the next call after a pause is still as quick as any other. Thanks @danusha2345 and @doomsday1906.
+- An MCP session whose agent stops reading its answers now shuts down cleanly the next time it answers, instead of crashing with "Uncaught exception: Error: EPIPE". Thanks @iiijiashu. (#2991)
+- A tool call whose arguments aren't an object, like `"arguments": "alpha"`, now gets the standard invalid-params error and no tool runs, instead of an internal CodeGraph error. Thanks @inth3shadows and @kjgggggg. (#2981)
+- Building CodeGraph from source with bun, as in `bun run build`, no longer keeps starting itself over until it is stopped; building with npm is unchanged. Thanks @bompus.
+- When CodeGraph can't open a project's database, it now shows SQLite's error, the file's path and what to check, instead of always saying "CodeGraph requires node:sqlite (Node.js 22.5+)".
+- When a git worktree is answered from another checkout's index, `codegraph status` and your agent's warning now suggest plain `codegraph init` in the worktree, without the `-i` flag that no longer does anything. Thanks @GaoSSR.
+- `codegraph upgrade` no longer wipes your agent instructions file, like a global `AGENTS.md` or `CLAUDE.md`, when a stray `<!-- CODEGRAPH_START -->` line sits above CodeGraph's section. Thanks @pzaj2. (#2506)
+- `codegraph install`, `upgrade` and `uninstall` now write through a symlinked instructions or config file, such as one from your dotfiles, instead of replacing the link with a copy. Thanks @jguerra6, @meganemura and @danusha2345. (#2721)
+- `codegraph install` and `upgrade` no longer add a second `[mcp_servers.codegraph]` entry to Codex's `config.toml` when yours is written differently, and repair a file already broken. Thanks @dencoseca, @danusha2345 and @rudycelekli. (#2562)
+- For Hermes Agent, `codegraph install` and `upgrade` no longer add `mcp-codegraph` to `platform_toolsets.cli`, which could hide your other MCP servers, or reset your `mcp_servers.codegraph` settings. Thanks @Huy3ko, @conifercone and @rudycelekli. (#2485)
+- `codegraph upgrade` run from your home folder now upgrades a global npm install instead of putting a second copy there, and a pnpm, yarn or bun install gets the command that upgrades it. Thanks @timlincool and @maxmilian. (#2477)
+- After an upgrade, `codegraph status` and the upgrade reminder now tell you to run `codegraph index`, instead of `codegraph sync` or `codegraph index -f`. Thanks @Adam0120.
+- `codegraph status` no longer says the index is up to date while indexed files are missing their symbols: it now names them, `status --json` counts them, and `codegraph files --json` lists their errors. Thanks @lipchey. (#2336)
+- `codegraph sync` no longer says "Already up to date" on an index built by an older CodeGraph: it syncs your changes, then warns that the files it didn't touch still need a full `codegraph index`. Thanks @bompus.
+- `codegraph affected --filter` now matches its glob against whole names, so `tests/**/*.py` also finds tests directly inside `tests/` and `tests/*.py` no longer counts `tests/x.py.bak`. Thanks @Jseca666.
+- The time `codegraph init` and `codegraph index` print now covers the whole run, resolving references and linking included, and `codegraph sync` reports its whole run too. Thanks @bompus for the report. (#2334)
+- The call paths `codegraph context` prints now name what bridges each dynamic-dispatch hop in the words `codegraph_explore` uses, so a call through an interface no longer looks like an emitted event.
+
+#### Indexing and sync
+
+- `codegraph sync` no longer fails with "FOREIGN KEY constraint failed" in a project that lazy-loads a workspace package, like `() => import('@vben/layouts').then((m) => m.IFrameView)`. Thanks @bompus and @inth3shadows. (#2565)
+- `codegraph status` and `codegraph_status` now report uncommitted edits, new files and deletions in a project inside a folder of its git repository, like a monorepo package. Thanks @innoxxicide. (#1636)
+- A file is no longer saved with no symbols when its language parser can't be loaded, as happened after an upgrade removed a running server's install; files emptied this way are re-indexed by the next sync. Thanks @lipchey. (#2335)
+- `codegraph sync` and the file watcher now link the files importing a file that was skipped, for its size or a parse failure, once an edit lets it be indexed, as a full index does. Thanks @inth3shadows. (#3016)
+- A program using CodeGraph as a library to index chosen files now keeps other CodeGraph processes, like a git hook's `codegraph sync`, out of the index until those files are stored.
+- When several CodeGraph processes start at once after one crashed, only one now takes over the write lock it left behind, so two no longer write to the index at the same time. Thanks @inth3shadows and @vedantb7. (#2979)
+- A program using CodeGraph as a library that re-runs a full index now keeps every symbol findable by the words in its name, which `codegraph_explore` and the prompt hook match questions against. Thanks @rudycelekli.
+- A program using CodeGraph as a library no longer crashes when a `watch()` callback it passed, `onSyncError` or `onDegraded`, throws; the error is logged and a failed sync still retries. Thanks @johnhldiver-beep. (#2643)
+- A long-running session now notices a framework added or removed while it runs, such as Express in a new `package.json`, and `codegraph status` recommends a full index. Thanks @nk33-dev and @inth3shadows. (#2516, #2519, #3007)
+- Running `codegraph status` while `codegraph index` rebuilds a project no longer makes the rebuild fail with "database is locked", and status now says when a rebuild is running. Thanks @sealad886, @danusha2345 and @KissFeng. (#2913)
+- Running `codegraph query`, `explore`, `node`, `callers` and other read commands, or Claude Code's context hook, while `codegraph index` rebuilds no longer makes the rebuild fail with "database is locked". Thanks @sealad886. (#2913)
+- Opening a project whose index needs a schema update no longer fails with "UNIQUE constraint failed" or "database is locked" when several CodeGraph processes open it at once. Thanks @inth3shadows and @johnhldiver-beep. (#2980)
+- `codegraph init` and `codegraph index` no longer report a deleted file git still lists, or a broken symlink, as one that "could not be read", and a sparse checkout's left-out files are no longer looked for. Thanks @xianzhi-xzw. (#2904)
+- A full index of a project holding a video named `.ts`, like an MPEG-TS clip among test fixtures, no longer warns that the index is PARTIAL; the video now counts as skipped. Thanks @Hetox. (#1910)
+- Indexing a project that includes large bundled JavaScript files, such as a copy of pdf.js or d3, is fast again after slowing down in 1.6.2. Thanks @bompus for the report. (#2334)
+- Indexing a project that ships a large minified JavaScript file, such as the GraphiQL bundle in go-ethereum, no longer stalls at "Resolving refs" on Node 22, and is faster on any Node version.
+- Indexing JavaScript and TypeScript projects is a little faster when their code calls methods the project doesn't define, like `list.push(…)`. Thanks @luojiyin1987. (#2829)
+- `codegraph sync` and the file watcher now link an import to its file when that file is added later or comes back after being deleted, in Dart, JavaScript, TypeScript, C, C++, PHP, Python, Lua and C#.
+- `codegraph sync` and the file watcher now link a call that had two candidates once a sync deletes or renames away the file holding one of them, as a full index does. Thanks @inth3shadows. (#3006)
+- `codegraph sync` and the file watcher now update the importers of a re-exporting module, like an `__init__.py` or `index.ts` barrel, when it is deleted or added, in Python, JavaScript, TypeScript, Vue, Svelte and Astro.
+- Indexing no longer stops with `Invalid regular expression … Nothing to repeat` on a method name that isn't a plain word, like a C++ `operator++`, a Scala `++` or a Kotlin name in backticks. Thanks @Sven-lxw, @ArronLin, @daheix and @danusha2345. (#2457, #2482, #2636)
+- A folder whose name starts with two dots, like `..generated/`, now counts as part of your project everywhere: in `tsconfig.json` or `jsconfig.json` path aliases, the file watcher, `.gitignore` rules and `codegraph.json`. Thanks @amplifierplus.
+- A long-running session, like the background server behind your agent, now links an edit the way a fresh index does, for edits such as a Go file's `//go:build` line or a Vue or Svelte component's `<script>` block.
+- `codegraph sync` now follows an edit to a `Cargo.toml` or a `compile_commands.json`, linking again the imports a new workspace member, a renamed crate or another `-I` directory moves, in untouched files too.
+- `codegraph sync` now follows an edit to the `paths` or `baseUrl` of a `tsconfig.json` or `jsconfig.json`, or to the module path in a `go.mod`, linking the imports they map again. Thanks @inth3shadows for the report and @danusha2345. (#2977)
+- Git sync hooks now refresh the project they were installed for, even inside a larger repository, no longer break an existing hook written in another language, and run even when your hook ends with `exit`.
+- A folder named `build` inside `src/` is now indexed for its TypeScript, JSX, Vue, Svelte, Astro, Go, C# and Rust files instead of being skipped as build output; `build` folders elsewhere still are.
+- A folder git ignores at the top of your project no longer hides every folder of the same name further down, like a package's own `lib/` or an app's `static/`. Thanks @Victor-Rodriguez-Garcia. (#2849)
+- `.gitignore` rules and `codegraph.json` patterns now follow git's rules for escapes, character classes and triple asterisks, and a lone `!` line no longer brings back everything ignored. Thanks @johnhldiver-beep.
+
+#### Better answers from `codegraph_explore` and the other tools
+
+- `codegraph_explore`, `codegraph explore` and the prompt hook no longer stall on a large project after a full index when a few files are huge, like a generated Android `R.java`. Thanks @yangfengfan2011. (#2571)
+- `codegraph_explore`, `codegraph explore` and the Claude Code prompt hook now answer a long query, like a pasted log or source file, in seconds on a large project instead of minutes. Thanks @retsamekohC. (#2620)
+- A search with a `path:` or `name:` filter, in `codegraph query` or the `codegraph_search` tool, now finds the symbols it asks for at any limit, and an offset pages through those alone. Thanks @rudycelekli.
+- A search in `codegraph query` or the `codegraph_search` tool now finds the symbols a pasted call names, like `res.send(body)` or `leaf(entry)`. Thanks @inth3shadows and @kjgggggg. (#2971)
+- `codegraph_explore` and `codegraph context` now find your project's busiest file, and favor the code around it, even when many test or generated files, like protobuf stubs, are busier still. Thanks @inth3shadows. (#2578)
+- A qualified name like `Format.Price` given to `codegraph callers`, `callees`, `impact` or `codegraph_node` now names only the symbol whose scope is spelled that way, not `LegacyFormat.Price` too. Thanks @Gobakabana and @yang0228. (#2908)
+- Finding the path between two symbols no longer slows down sharply, or grows its memory use, when the path is long or the graph is densely connected. Thanks @danusha2345.
+- `codegraph impact` and `codegraph_impact` on a very heavily referenced symbol now stop at a safety limit and say the answer was truncated, instead of exhausting the background server's memory. Thanks @danusha2345.
+- `codegraph callers` and `codegraph_callers` now list each caller at every line where it calls the symbol, and include a function that calls itself, marked as such. Thanks @Gobakabana and @johnhldiver-beep. (#2909)
+- `codegraph_explore` and `codegraph context` now include some of the subtypes and implementors of a class or interface, and the library's `getTypeHierarchy` lists all of them. Thanks @jocax and @danusha2345. (#2833)
+- A file named the way Google names its tests, like `wire_format_unittest.cc` or a Python `foo_unittest.py`, now counts as a test, so search, `codegraph_explore` and `codegraph affected` treat it as one.
+- A file in a `unittests/` folder, as in LLVM, or in a folder named like a unittest, such as `dcheck_unittest/`, now counts as a test, while a folder named just `unittest/` is still production code.
+- `codegraph_explore` now leaves out of its answers every file that search treats as a test or an example, like `foo_unittest.cc`, so they no longer take the place of the code you asked about.
+- `codegraph_explore`'s Flow now goes through the implementation your query names when an interface method has several that lead to the same place, rather than whichever came first in the index.
+- `codegraph_explore`'s Flow now reaches every symbol your query names, even when a shorter route gets to one of them first through a function you didn't name. Thanks @inth3shadows for the report and @johnhldiver-beep. (#2970)
+- `codegraph_explore`'s "Dynamic-dispatch links among your symbols" list now shows every link on its own line, with both ends named with their type, like `setter.TrySet → formSource.TrySet`.
+- `codegraph_explore`, `codegraph_node`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact` and the `codegraph callers`, `callees` and `impact` commands now find a symbol written with its package, like `gin.Context.Next`.
+- When a name has more definitions than one `codegraph_node` answer holds, every language and top-level folder it is defined in now shows up, in `codegraph_node` and `codegraph node`. Thanks @ferrine.
+- When `codegraph_explore` finds more dynamic-dispatch links than its list shows, the symbols you named now take turns, so each one's links make the list.
+- `codegraph_explore` now shows a function you name even when it is too long for its share of the answer, with a note on the lines cut and the query that returns them. Thanks @Huy3ko for the report and @danusha2345. (#2486)
+- A `codegraph_explore` answer now first lists names in its query that the index has never seen, and points to `codegraph status` and how to index a folder skipped by default. Thanks @tippmar-nr for the report. (#2462)
+- `codegraph_explore`, `codegraph explore` and `codegraph context` now find code named in Chinese, Japanese or Korean, and explore's Flow traces call chains named that way. Thanks @andy-sg and @yimingll.
+
+#### Across languages
+
+- Long chains of type aliases in TypeScript or Pascal, long Lua re-export chains and a C `#define` in an included source file now resolve the same way every time, so calls no longer go missing or differ between runs.
+- In Python, Scala and Java, a standard-library method called on a value of unknown type, like `options.setdefault(…)` or `m.getOrElse(…)`, no longer links to an unrelated project method of the same name. Thanks @danusha2345. (#1947)
+- Indexes built on machines set to different languages now agree: a tie in a TypeScript, C++ or React Native Swift lookup is broken the same way everywhere, not by the system's language settings. Thanks @bompus.
+- A method that hands its call on to another object's method of the same name, like `form.validate()` inside its own `validate()`, no longer links that call back to itself, so it no longer looks recursive. Thanks @danusha2345.
+- In Java and Scala a call with no receiver, and in Python, TypeScript and JavaScript a call on `self` or `this`, now links to its own class's method or an inherited one, not a same-named method of another class. Thanks @danusha2345. (#1952)
+- In C++ and Rust, a call written with a qualifier, like `Status::OK()`, now links to a method of the class it names, never to one of a class whose name only ends the same way.
+- In a repository that mixes languages, a web framework's naming conventions now link only code written in that framework's own languages, so Express's no longer link Go or Python code.
+- A name that only one definition in its own file can mean is no longer marked as an uncertain match, and now wins over a framework's weaker same-named guess in another file. Thanks @danusha2345.
+- When a project keeps copies of the same code in several folders, like Android build flavors, a call now links to the copy in the caller's own folder, even in deeply nested trees. Thanks @danusha2345.
+- In Java, Kotlin, C# and Scala, each overload of an interface or base-class method now links only to the overrides with the same parameters. Thanks @hxj1225 for the report and @danusha2345. (#2663)
+- In Java and TypeScript, a class that implements or extends a parameterized type, like `implements Store<String>`, is now linked to it, so a call on the interface reaches the class. Thanks @danusha2345 and @paiyahooJay. (#2705)
+- In Java and C#, a method called on a newly constructed object, like `new SqlSessionFactoryBuilder().build(reader)`, now links to that class's own or inherited method.
+- In Java and C#, which nested types a class can name no longer depends on the order references are resolved in, so the same code always gives the same graph and one inherited from far up links every time.
+- In Java, Kotlin and C#, a supertype written through its enclosing type, like `implements Api.Listener`, now links to that nested type, and a Kotlin object expression is indexed as an anonymous class. Thanks @mixxer.
+- A call on a variable or attribute named after a class, like `client` or `nodelist`, now prefers the class it spells whole, `Client` or `NodeList`, over another that only shares a word with it, like `RedisCacheClient`.
+- A call through an attribute of an imported value, like flask's `app.jinja_env.filters.keys()`, no longer links to the value's own `jinja_env`: the method called is `keys`.
+- A call like `Logger.log()` or `logger.log()` now links to that class's own or inherited method instead of a same-named method of a class whose name merely contains it, like `FileLogger`. Thanks @inth3shadows.
+- In JavaScript, TypeScript, Python, Go, Rust, Java and Kotlin, a function named in a top-level constant, variable or class field is now referenced only by what holds it, so callers and impact list each table once.
+
+#### JavaScript and TypeScript, with React, Vue, Svelte, Angular, Next.js and more
+
+- In TypeScript, an awaited call with type arguments, like `await api.get<T>(url)`, now links to the function it calls, so typed fetch wrappers no longer look like they have no callers. (#2586)
+- In JavaScript and TypeScript, a call or `new` in a parameter's default value, like `function renderWithNote(note = buildNote())`, now counts as the function's own call. Thanks @inth3shadows. (#2588)
+- In React, a component rendered at module scope or in a test's `it(…)` callback, like `createRoot(el).render(<App />)`, now counts as rendered there, so an app's entry reaches its root component and tests show as callers. (#2587)
+- In JavaScript and TypeScript, react-dom's `root.render(<Popup />)` no longer links to your class component's `render()`, and a call on a variable declared outside its function now goes by that declaration's type. Thanks @inth3shadows. (#2589)
+- In JavaScript and TypeScript, a call on a browser object, like `window.open('/help')` or `localStorage.getItem('token')`, no longer links to a same-named method in your own wrapper. Thanks @Gobakabana and @KissFeng. (#2907)
+- In JavaScript and TypeScript, a method called on a freshly constructed object, like `new Runner().run()`, now links only to that class's own or inherited method, not an unrelated namesake. Thanks @danusha2345. (#1945)
+- In JavaScript, a call in a file that gives an object that method itself, with `Sha256.prototype.update = function…`, no longer links to the only method of that name in some other file.
+- In JavaScript and TypeScript, a call in an `if`, `while`, `for` or `do` body without braces no longer links to a same-named method in another file when the name is the file's own, like a `setOpen` from `useState`. (#2585)
+- In JavaScript and TypeScript, a method called on an element of a class field, like `this.items[0].save()`, now links to the method of the field's declared type instead of any same-named method. Thanks @inth3shadows. (#2766)
+- In Vue and Nuxt components, calls in the template, like `@click="save(item)"`, and in a top-level destructuring like `const { t } = useI18n()` now link to the function they call. Thanks @deniskern, @drakeo338 and @L0garithmic. (#2340)
+- In Vue, a `<script lang="tsx">` block is now read as TSX instead of JavaScript, so the interfaces and types it declares are no longer missing from the graph. Thanks @leadingGo, @maxmilian and @yanhongwang1017. (#2570)
+- In Astro, Svelte and Vue, a self-closing script like `<script src="./legacy.js" />` no longer swallows the `<script>` after it, so that script's symbols and calls are indexed. Thanks @rezaularif and @maxmilian. (#2989)
+- In JavaScript and TypeScript, calls now reach the functions inside a named object literal, like `window.App = { init() {…} }`, even when the object isn't exported. Thanks @tkhoaaa and @danusha2345. (#2300)
+- In JavaScript and TypeScript, a function exported with its name in quotes, like `exports["getItems"] = async (req, res) => {…}`, is now a symbol named after the export. Thanks @johnhldiver-beep.
+- In JavaScript and TypeScript, a store whose name contains a `$`, like `const items$ = create(…)` exported on a later line with `export default items$;`, now has its actions indexed.
+- In JavaScript and TypeScript, an import whose name contains a `$`, like `import items$ from './store'`, now links the calls made through it, so the functions they call no longer look unused.
+- In JavaScript and TypeScript, a function declared inside another function now takes the calls to its name there, even when the file also imports that name from a package. Thanks @danusha2345. (#1715)
+- In JavaScript and TypeScript, a store whose name starts or ends with a `$` now has its actions indexed when an `export { … }` list on a later line exports it, as in `export { items$ };`.
+- In JavaScript and TypeScript, `codegraph sync` and the file watcher now also link the imports of an added or restored file whose name many other imports share, like a project's own `utils.ts`.
+- `codegraph sync` and the file watcher now link an import of a folder two or more levels up, like `import { Excalidraw } from "../.."`, to that folder's `index` file when that file is added or restored.
+- `codegraph sync` and the file watcher now link a navigation call to its page when the page or route is added or restored, in React Router, Next.js, Expo Router, Vue Router, TanStack Router, SvelteKit and Angular.
+- In Nuxt, a `navigateTo('/login')` call now links to the page it opens, so a flow through a Nuxt redirect no longer stops there. Thanks @naashw for the report. (#2634)
+- `codegraph sync` and the file watcher now link a route to the page or layout it loads lazily when that file is added, restored or gets the route's component in a later edit, in React Router, Vue Router and Angular.
+- `codegraph sync` and the file watcher now link a default, namespace or aliased import and its uses when its module is added, restored or gets the export later, in JavaScript, TypeScript, Vue, Svelte and Astro.
+- `codegraph sync` and the file watcher now also link a call on an imported name, like `store.get(key)`, when its module is added, restored or gets the export later, in JavaScript, TypeScript, Vue, Svelte and Astro.
+- In JavaScript and TypeScript, `codegraph sync` and the file watcher now also link a call on a variable declared with an imported class, like `cache.get(key)`, when its module is added, restored or gets the class later.
+- `codegraph sync` and the file watcher now also link a name imported from a barrel module when an edit later makes the barrel re-export it, in JavaScript, TypeScript, Vue, Svelte and Astro.
+- In JavaScript and TypeScript, `codegraph sync` and the file watcher now update a barrel's importers when an edit moves, removes or narrows one of its re-exports. Thanks @inth3shadows and @danusha2345. (#2978)
+- In TypeScript and JavaScript, an array method call like `items.find(…)` on a variable or parameter annotated as an array of a class (`items: Item[]`) no longer links to the class's method of the same name.
+- In TypeScript and JavaScript, a call on a value annotated as a type's property, like `editor: IChatWidget['inputEditor']`, now links only to a method of that property's declared type.
+- In TypeScript and JavaScript, a call on a callback's untyped parameter, on a variable set from a function's result, or on a value a type guard like `if (!editor.hasModel()) return;` narrows now links to the method of the type the code gives it, not a namesake on a base type.
+- In JavaScript and TypeScript, a file that re-exports a module, like an `index.ts` with `export * from './button'`, now counts as importing it, so `codegraph affected` includes the barrels that re-export it.
+- `codegraph sync` and the file watcher now also update the files that import through an `index.ts` re-exporting another barrel, like `export * from './dropdown-menu'`, when that inner barrel is deleted or added.
+- An import in a Vue, Svelte or Astro component now links the component to the file it imports, as in a script, and so does an import of a scoped package that a `tsconfig` path or workspace maps to a project file.
+- In a pnpm, npm, Yarn or Bun workspace, packages reached by a deep glob like `packages/**/*` or by part of a folder name now count as part of the project, and a negated glob now leaves packages out.
+- In a project that uses Vue, an import through an `@/` or `~/` alias now links the file it imports, so `codegraph sync` and the file watcher update the importers when that module is added or deleted.
+- In JavaScript, TypeScript, Vue, Svelte and Astro, `codegraph sync` and the file watcher now move an import written without an extension to a newly added file that comes first, such as `button.ts` next to `button.vue`.
+- Support for frameworks such as Angular, React Router, Vue Router, SvelteKit and TanStack Router now switches on when an app's `package.json` sits deep in the project, like an ASP.NET solution's `src/Web/ClientApp/`.
+- In JavaScript and TypeScript, a subclass's `static` method no longer counts as overriding a base-class instance method of the same name, or the reverse. Thanks @inth3shadows for the report and @yang0228. (#2761)
+- In TypeScript and JavaScript, a class in a `.tsx` or `.jsx` file now links its base class's and interfaces' methods to its overrides, so `codegraph_explore` follows a call through the base into the override.
+- In JavaScript and TypeScript, a `super.run()` call now links to the parent's method, or the nearest ancestor's, so `codegraph_explore` and impact follow an override into the method it builds on. Thanks @Puma7. (#2497)
+- In JavaScript and TypeScript, a named class expression, like `module.exports = class MultiCompiler {…}`, is now indexed as a class with its own methods and the class it extends. Thanks @Puma7. (#2499)
+- In Angular templates, a property binding, interpolation, structural directive or control-flow block now links the component to the members it calls or reads, so one used only from a template no longer looks unused.
+- React Router routes kept in a table of their own, like a `routes` array imported into `useRoutes(routes)`, are now indexed, each linked to the page its `element` renders, past guards and lazy imports.
+- In `.jsx` files, the components and functions that read a constant or variable declared at the top of the file now show up in its impact, as they already did in `.js` and `.tsx` files.
+- React Router routes written as JSX now read `<Route index>` the way route objects do, as the page at its parent's address, and a parent route counts as the layout of the routes nested in it.
+- In JavaScript and TypeScript, a module loaded with `require('./x').default` now links to its default export when it is written as an ES module, so a `new` or a call made through it links too.
+- In JavaScript and TypeScript, a member of a module loaded with `require('./x')` or a default import, like `utils.clean()`, now links to what that module exports under the name, not to the first function it declares.
+- A React Router route that lazily loads a folder, like `lazy: () => import('@/pages/invocation_page')`, now links to the page the folder's `index.ts` passes on, even through another `index.ts`.
+- A React Router route whose `lazy` loader picks its page from the module it loads, like `import('./reports').then((m) => ({ Component: m.ReportList }))`, now links to that page rather than the module's default export.
+- A React Router route, or a page loaded with `lazy(() => import(…))`, now links to its page when the folder it loads passes the page on through an import of its own, rather than to nothing.
+- `codegraph sync` and the file watcher now link a lazily loaded React Router route to its page when the page appears, or gains the export the route reads, in a folder below the one the route loads.
+- React Router routes are now indexed when the router gets its table from a function through a variable, like `const routes = getRouteMap({ … })` then `createBrowserRouter(routes)`, as in Medusa's admin dashboard.
+- A React Router route written as `element: <Outlet />` or `Component: Outlet` now counts as rendering nothing of its own, rather than taking `Outlet` for its page and for the layout of the routes inside it.
+- React Router routes are now read from every table a route-building function returns, and never from a list a function written inside it returns, so an empty guard or a callback's list no longer hides an app's routes.
+- In JavaScript and TypeScript, an import written `import { default as AppRoot } from './routes/app/root'` now counts as the module's default import, in Svelte, Vue and Astro script blocks too.
+- In JavaScript and TypeScript, an import now links to what the module itself exports under that name, rather than to a method of the same name in an exported object. Thanks @inth3shadows. (#2945)
+- In JavaScript and TypeScript, a top-level value that only hands a function on, like `const parse = marked`, now links to that function, so `codegraph_explore`, callers and impact follow the flow through it.
+- In React, a component's JSX no longer links it to a class or component that only shares a name with one of its type arguments, like `useState<User>()`, or with a variable of its own.
+- In React, Svelte, Astro and Vue, a component used without an import that has several definitions now prefers one in the using file's own folder or a folder below it, compared folder by folder. Thanks @Mubashirrrr.
+- In React, a tag for a component a function destructures from its props or an object, like `({ Header, Footer, children }) =>`, now links to nothing unless the function declares a component of that name inside itself.
+- In React, a tag for a component a file destructures at its top, like `const { Title, Text } = Typography;`, now links to nothing in that file, unless a component there declares one of that name itself.
+- In React, a tag a component only mentions in a comment or a string, like a JSDoc example or an error message, no longer links it to that component, and nothing in a TypeScript `.ts` file is read as a tag.
+- In JavaScript and TypeScript, a name imported from a package your `package.json` lists no longer links to a same-named project symbol when `tsconfig.json` or `jsconfig.json` has a catch-all path alias.
+- In JavaScript and TypeScript, a `tsconfig.json` or `jsconfig.json` path alias with text on both sides of its `*` no longer matches an import that leaves nothing for the `*`, as TypeScript skips it too. Thanks @Dashsoap.
+- In JavaScript and TypeScript, a function the file imports from a package and passes along as a value, like react-router's `Link` in `styled(Link)`, no longer links to a project function that only shares its name.
+- In JavaScript and TypeScript, a function a file loads with a dynamic import from Node or a package no longer links to a project function that only shares its name. Thanks @Ancienttwo for the report. (#2491)
+- In JavaScript and TypeScript, code outside your tests no longer links to a Jest or Vitest manual mock under `__mocks__/`, so the real function keeps its callers. Thanks @Y-Osawa2022 for the report and @danusha2345. (#2455)
+- In JavaScript and TypeScript, an import of a package from your own repository, a `file:` dependency included, now leads to the file its `package.json` names. Thanks @elderbernardi, @Y-Osawa2022, @maxmilian and @danusha2345. (#2502, #2456)
+- In JavaScript and TypeScript, a call or `new` no longer lands on an interface or a type alias, and a global like `new Response()` no longer links to a project type that only shares its name.
+- In JavaScript and TypeScript, a value the file imports from your own project and passes along, like a constant, a class or a stylesheet, now links only to what it imports, not to a same-named function elsewhere.
+- In JavaScript, a `.js` or `.jsx` file's import of a TypeScript module written without an extension now links to that module, as it already did from a TypeScript file.
+- In TypeScript React code, a styled-components or emotion component declared with a type argument, like `styled(Base)<Props>`, is now indexed as a component, so `codegraph callers` and impact find what renders it.
+- `codegraph sync` and the file watcher now move a React Router route to its lazily loaded page when the page's file is added later, comes back after being deleted, or gets or changes its default export.
+- `codegraph sync` and the file watcher now link a component to the JSX that renders it, like `<Team />`, when the component is added in a file with no JSX of its own, so it no longer looks unused.
+- In JavaScript and TypeScript, a default import now links to what the module's `export default` statement exports, wherever it sits, instead of the first function it exports, like a React Router page's `loader`.
+- In JavaScript and TypeScript, a line like `export default App` inside a template literal, as code generators write, no longer counts as the module's default export. Thanks @inth3shadows and @johnhldiver-beep. (#2968)
+- In React and Vue, a tag for a component imported from a package, like `<Button>` from antd, no longer links to a component, function or class in your repository that only shares its name.
+- In React with TypeScript, a component that renders a generic component with type arguments, like `<PaginatedList<Document> items={…} />`, now links to it, so the generic component no longer looks unused.
+- In React, a component a file declares itself as a value, like a lazily loaded page, a wrapped component or an alias, is now what that file's JSX renders, not a same-named component elsewhere in the repository.
+- In React, a JSX tag imported from one of your own modules now links to the component that module exports under that name, also through an `index` file, a barrel or a wrapper, instead of being matched by name.
+- An Express route keeps its named handler when a middleware before it contains an arrow function, like `(req, res, next) => next()`.
+- In TypeScript, a type re-exported through a barrel, like `export type { Foo } from`, now links to its real declaration, and import lists with comments, string names or a JSDoc `@import` are read correctly.
+- In TypeScript, a file with `export type * from './types'` now parses cleanly instead of being listed by `codegraph status` as unparsable. Thanks @gavinwilliams and @danusha2345. (#2474)
+- In TypeScript and JavaScript, a call through an inherited field, like `this._store.add(…)`, now links to the method of the field's class, and one typed by a package's class no longer links to a project namesake.
+- In TypeScript and JavaScript, a call on a variable, parameter or field whose class the file imports now links to that imported class's method, not to a same-named vendored copy, test mock or another app's class.
+- In TypeScript and JavaScript, and in Vue, Svelte and Astro components, a call on a value another file exports now links to the method of the class that file imports or declares, not a same-named class elsewhere.
+- In TypeScript, a call through a field a wrapper sets up, as vscode does for its event emitters, now links to the method of the class handed to the wrapper, when the wrapper hands back what it is given.
+- In TypeScript and JavaScript, a class that constrains a type parameter is now read as extending the class after its type parameters, not the constraint's type, even across several lines or below a decorator.
+- In TypeScript, an abstract method is now indexed as a method of its class, so a call through a value typed as an abstract class, common for Angular services, links to it and on to the classes that implement it.
+- In TypeScript and JavaScript, a call on a field or variable whose class the file imports now looks through that class and the classes and interfaces it extends before any other class of the same name.
+- In TypeScript and Flow, a call on a parameter, local or field typed by an alias of a class now links to that class's methods, also through a nullable alias or an alias of an alias.
+- In TypeScript, a call on a value of an interface that extends one also declared as a constant, like vscode's `ITerminalLogService extends ILogService`, now links to the method the extended interface declares.
+- In TypeScript, a field or variable set from Angular's `inject` or vscode's `createInstance` now has the class that call is given, so calls through it link to that class's methods.
+- In JavaScript and TypeScript, a call to a method whose name contains a `$`, like RxJS-style `this.organizationService.organizations$(userId)`, now links through its receiver's type like any other method call.
+- In JavaScript and TypeScript, an import written from a jsconfig or tsconfig `baseUrl` or catch-all paths, as Create React App and Vite templates do, now links to its file instead of being taken for an npm package.
+- `codegraph sync` and the file watcher now relink an import through a barrel that renames it, like `export { default as MatxLoading } from './MatxLoading'`, once an edit gives the module what is imported.
+- In JavaScript and TypeScript, a barrel's `export { A, B as C } from './x'` now links each name it passes on to what `./x` exports, following further barrels, rather than to a same-named symbol elsewhere.
+- In TypeScript and JavaScript, an import of a package your project declares with `declare module '…'` in a `.d.ts` file now links to that declaration, so `codegraph callers` and impact show the code using your typings.
+- In TypeScript, an interface that extends other interfaces is now linked to each of them, so the type hierarchy, impact results and calls on a value typed by it follow the interfaces it inherits from.
+- In TypeScript and JavaScript, a declaration inside a `.d.ts` file's `declare module '…'` now links only from files that use that module, not from any file using the same name.
+- In TypeScript and JavaScript, a call to a function's own parameter, like `compare(a, b)`, no longer links to a same-named function elsewhere or an import, such as a Promise executor's `resolve(…)` to `path.resolve`.
+- In TypeScript and JavaScript, a name ending in `$`, like `syncState$`, is no longer read as declaring `syncState`, so a call to an imported `syncState(…)` beside it keeps its link.
+- In TypeScript, a type a file uses without importing it, like `Omit<T, K>` or the DOM's `Event`, now links to the file's own type or a global one, not to a same-named type another module of your project declares.
+- In TypeScript React files, a type annotation no longer links to a component of the same name, so `codegraph callers` and impact no longer list it as a use of the component.
+- In React, a component declared through a wrapper, like `styled(ActionButton)` or `memo(Button)`, now links to the component it wraps, so `codegraph_explore`'s render flows, callers and impact go on through the wrapper.
+- In TypeScript, a type written with a qualifier, like `React.ReactNode`, now links to the member of what the qualifier names, not to a class or component of your own that shares its name.
+- In JavaScript and TypeScript, an import written from the app's root with a leading slash now links to the file it names when the app's `tsconfig.json` or `jsconfig.json` maps it, instead of being taken for a package.
+- In JavaScript and TypeScript, an import spelled with a trailing slash, a `./` or `../` segment or a doubled slash now links like the plain spelling. Thanks @inth3shadows and @JiaMingWang-CN. (#2577)
+- In JavaScript and TypeScript, a call whose callee is not a name, like an immediately invoked function, no longer stores the callee's whole source text in the index, and `(fn)()` now links to `fn` as `fn()` does.
+- `codegraph sync` and the file watcher now follow an edit that changes which declaration a module exports as its default, or drops it, so imports and references through it match a fresh index.
+- `codegraph sync` and the file watcher now relink a named import to its module once an edit makes the module export that name, instead of keeping a name match's link to a declaration elsewhere.
+
+#### Python
+
+- In Python, `import a.b as X` written inside a function now links its calls like `X.f()`, as the same import at module level already did. Thanks @Egrn. (#2600)
+- In Python, `other.update(…)` after `from pkg import other` no longer links into the module when a parameter, local or loop variable named `other` gives it another value. Thanks @BGamboa13. (#2632)
+- In Python, `from app import email` no longer links the importing file to a project variable named `app`, such as a FastAPI or Flask `app = FastAPI()`. (#2584)
+- In Python, a from-import of a module with no dot in its name, like `from loader import Registry`, now links the importing file to that module's file, so `codegraph affected` and impact no longer miss its importers.
+- In Python, a call through a module-level instance, like `_svc.delete(obj)` after `_svc = SceneService()`, now links to the method its class has or inherits, even when other classes have a method of that name. (#2582)
+- In Python, a call like `Repo.save()` or `repo.save()` with `class Repo(Base[User])` no longer links to a method of the base's type argument, like `User.save`. Thanks @JosefAschauer.
+- In Python, a class with a parameterized base, like `class Leaf(Base[str])`, is now linked to that base, as `class Leaf(Base)` already was, and a call through a module global holding one reaches the base's methods. Thanks @JosefAschauer.
+- In Python, a class whose base list is wrapped over several lines, as black and ruff write a long one, now reaches the methods its bases declare, as a one-line base list already did. Thanks @JosefAschauer.
+- In Python, a base class imported from outside the project, like `class Item(BaseModel)` after `from pydantic import BaseModel`, no longer links to a project class that only shares its name.
+- In Python, a call on a class whose base comes from outside the project, like `Color.name_of()` with `class Color(Enum)`, no longer links to a method of a project class that only shares the base's name.
+- In Python, a class written with PEP 695 type parameters, like `class Repo[T](Base[T]):`, now reaches the methods its bases declare, as a class without type parameters already did. Thanks @JosefAschauer.
+- In Python, a function handed on before its name is rebound, like `view = wrap(view)`, now always links to that function, so the graph of the same project no longer differs between runs.
+- In Python, a call to your own class's method named like a built-in one, such as `get` or `update`, now links when the function says what the variable holds, like `reg = SystemPackRegistry()`. Thanks @inth3shadows. (#2583)
+- In Python, a call on a module imported from outside your project, like `subprocess.run(…)` after `import subprocess`, no longer links to a project method that happens to share its name. Thanks @Egrn. (#2599)
+- Indexing large Python projects is much faster again and needs less memory: since 1.6.2, resolving Python references re-read source files over and over. Thanks @bompus. (#2332)
+- In Python, `codegraph sync` and the file watcher now link an aliased import, like `from .models import User as UserModel`, and every use of the alias when the module is added, restored or gets the name later.
+- In Python, `codegraph sync` and the file watcher now link imports of a name a package re-exports when its `__init__.py` is added or gains the re-export, and, in any language, no longer skip a module many references wait for.
+- Python calls through an attribute, like `self.sink.stop()`, now reach the method of the class your code gives that attribute instead of one matched by name alone. Thanks @inth3shadows. (#1704)
+- A Python call through an attribute set by a factory or a base class's `__init__`, or straight on a factory's result, like `Client.from_env().send()`, now reaches the right method. Thanks @inth3shadows. (#1704, #750)
+- Python imports now resolve from your package roots, like `src/` layouts and each `pyproject.toml`, so `import requests` no longer links to a same-named file in a test fixture or vendored copy. (#1704)
+
+#### Java, Kotlin and Scala
+
+- In Play projects, a route or a call like `MediaType.parse(...)` now links to a method of the class or object it names, and a call to an overloaded method to the overload its arguments fit. Thanks @danusha2345.
+- In Spring projects, a route now links to its handler when the method has no access modifier, like `@GetMapping List<Article> list()`, so the handler no longer looks unused. Thanks @Liurchen.
+- In Scala, a call like `Uci.Move(from, to)` now links to the case class or nested object it builds, rather than to nothing or to an unrelated Java constructor. Thanks @danusha2345.
+- In Java, a `record` is now indexed as a class with its methods, constructors, component fields and accessors, so calls on a record link and records show up in callers, impact and implementations. Thanks @danusha2345.
+- In Java, more calls now resolve on the type their receiver is declared with, and a call on a library type, like Android's `Parcel`, no longer links to a same-named method of your own. Thanks @danusha2345.
+- In Java, a call now links to the overload its arguments fit, by how many there are and their types, and a lambda or method reference reaches the overload that takes a functional interface.
+- In Java, a call on a value held in a static field, like an enum constant's `Color.RED.hex()`, now links to the method of the field's type rather than being guessed by the method's name. Thanks @mixxer.
+- In Java, reading another class's constant, like `InferenceString.PARSER`, no longer counts as reading a constant of the same name in the file doing the reading, so impact leaves out code that never touches it.
+- In Kotlin, a call on what one of your functions returns, like `repository().pending(1)`, now links to the method of the type that function declares. Thanks @mindcipherrr for the report. (#2805)
+- In Kotlin, a call through a property now links to the method of the type it is declared with, and a call on a type from outside your project no longer links to a same-named method of your own. Thanks @danusha2345.
+- In Kotlin, a `fun interface` is now indexed as an interface with its methods, rather than as a broken function that could also lose the declaration after it. Thanks @danusha2345.
+- In Kotlin, a `private val` or `private var` property, and the members of a `private` class or object, no longer take calls from other files. Thanks @danusha2345.
+- In Kotlin, a call on a library type you import, like Jetpack Compose's `Modifier.pad()`, now links to the extension your project declares on that type when the calling file can see it. Thanks @danusha2345.
+- In Kotlin, when two packages declare a class of the same name, a call on a value of that type now links to the one the file imports, and so does a Java call on such a class. Thanks @arttttt. (#1942)
+- In Kotlin and Java, a call through an import of a class written in the other language now links to that class, rather than to a same-named class in another package or to nothing. Thanks @mixxer.
+- In Kotlin Multiplatform, a call through an import now reaches what the caller compiles against: the `expect` from common code, the platform's `actual` from Java or platform code. Thanks @inth3shadows and @johnhldiver-beep. (#3033)
+
+#### C# and VB.NET
+
+- In VB.NET, every member of a `Structure` is now indexed, including its fields, properties, methods, constructors and nested enums, where before only the first one was.
+- In VB.NET and C#, what a property's `Get` and `Set` code calls, creates and reads now belongs to that property, so a method used only from a property no longer looks unused.
+- In VB.NET, a field or property initializer like `= Compute()` or `As New List(Of Order)` now links what it calls and creates, and so do a `Custom Event`'s `AddHandler`, `RemoveHandler` and `RaiseEvent` blocks.
+- In C#, a field or property initializer like `public List<Foo> Items { get; } = new();` now links what it calls, creates and reads, so a method or class used only from one no longer looks unused.
+- In C# and VB.NET, a constant no longer stands in for a type with the same name, so `new Version(…)` no longer links to a `const string Version`. Thanks @EvanYu1980 and @drakeo338. (#2337)
+- In C#, a name written with type arguments now means a type with that many type parameters, so `new List<Brand>()` inside a Blazor page called `List` no longer links to the page.
+- In VB.NET, a call on a variable, parameter, field or property now reaches a method of its declared type, one it inherits or an extension method, instead of any project method that merely shares the name.
+- In VB.NET, a call to one of .NET's own methods such as `Add`, `Contains` or `Dispose` on a value of unknown type no longer links to a project method of that name, unless the value is named after its class.
+- In VB.NET, a type name is now looked up the way VB.NET does it, through the namespaces around it, `Imports` and the caller's own project, so a class declared in several places no longer draws every call to one copy.
+- In VB.NET, a call with no receiver, or on `Me`, now reaches only a member of its own class, a class it inherits or a Module, not a nearby class's member of the same name.
+- In VB.NET, designer code such as `New System.Drawing.Point(…)` no longer links to a project type or member that only shares the name, and a nested class is matched by its bare name only from inside its class or one that inherits it.
+- In VB.NET, reading or setting a `Shared` field or property through its class or module name, like `AppSession.SessionId`, now counts as a use of that member and the class. Thanks @serkanince and @ChrisPrapas. (#2305)
+- In VB.NET, a name that begins with a keyword, like `SharedCache`, is now indexed whole, so reads of and calls to it link, and a `Private Protected` member counts as private instead of public.
+- In VB.NET, reading or setting a field or property through a variable, `Me`, `MyBase` or a `With` block, like `x.Normal = 3`, now counts as a use of that member in `codegraph callers`.
+- In VB.NET, a type or member read through a namespace now links to what it names, and a method called without parentheses links to the overload that takes no arguments. Thanks @serkanince for the report. (#2305)
+- In VB.NET, a field, property or Module variable written by its bare name before a member, like `Button1` in `Button1.Text = "x"`, now counts as used, so `codegraph callers` lists the code that reads through it. (#2305)
+
+#### Swift and Objective-C
+
+- In Objective-C, a struct, union or enum defined in a variable declaration, or a typedef written after a line holding only a macro, is now indexed with its enum values, as in C and C++.
+- In Objective-C, a macro alone on its line, like `NS_ASSUME_NONNULL_BEGIN`, no longer hides the declaration below it, which left many classes and protocols missing from the index.
+- In Objective-C and the C and C++ headers beside it, an enum declared with Foundation's or CoreFoundation's macros, like `typedef NS_ENUM(NSInteger, SDImageCacheType) { … };`, is now indexed with its values.
+- In Objective-C, the doc comment above a method, function or static written inside an `@implementation` is now read as its description, so search and `codegraph_explore` show it.
+- In Objective-C, file-scope constants and globals, like error domains, notification names and keys, are now indexed with their values, also when written inside an `@implementation`.
+- In Objective-C, a message to an instance variable or a property now reaches a method of the class it is declared as, instead of one matched by the receiver's name.
+- In Swift, a call written after `!` or another prefix operator, or chained after `try` or `await`, now links to what it calls, like `if !isReady()` to `isReady`.
+- In Swift, a call on a local created through `try`, `try!`, `try?` or `await`, or with a generic type's constructor, now links to that type's method instead of being left unlinked or matched by name.
+- In Swift, a call now links to the overload that fits when two differ only in taking a closure, and a trailing closure now counts among the arguments, so `clearCache { … }` reaches `clearCache(completion:)`.
+
+#### C and C++
+
+- In C, C++ and Objective-C, a struct or class member declared as a pointer, reference, array or function no longer makes `codegraph_explore` and impact list the member's type as a base class.
+- In C, C++ and Objective-C, a struct, class or union now links to the types its members are declared with, and a `typedef` or `using` alias to the type it names, so impact on a type reaches every struct that holds one.
+- In C and C++, a function-pointer table's handler, like `.read = impl_read` in an ops struct, now links to the C function the table names, not a Python or Rust function that only shares its name. Thanks @bompus.
+- In C++, a call through a template parameter now links to that member of each class the project writes as the template's argument, so `codegraph_explore`, callers and impact follow a flow through the template.
+- In C++, a call on a variable, parameter or member declared through a `typedef` or `using` alias now links to the method of the type the alias names, with the alias looked up the way C++ does it.
+- In C++, indexing no longer fails with "Maximum call stack size exceeded" on a call whose arguments call the same overloaded method. Thanks @JosefAschauer.
+- In C++, a call on a variable, parameter or member declared with nested template arguments, like `autovector<std::pair<int, FileMetaData*>>`, now links to the method of the class it is declared as.
+- In C++, a base class now links to the class C++ itself would pick, not a class of the same name in another namespace or language, so `codegraph_explore`'s type hierarchy and impact show the right base.
+- In C++, a call through a class template's specialization written with its arguments no longer links to a member defined for another specialization or to another class's method of that name.
+- In C++, a function is now named by its declarator, never by something written in the clauses after its parameters, like `throw(std::bad_alloc)`, so such functions are no longer missing or misnamed.
+- In C and C++, a header or source file named like a test, such as `conformance_test.h`, now counts as part of the code that `#include`s it, so calls from that code into it link.
+- In C++, a class, struct or method now keeps the namespaces and the class it is declared in when the parser misreads something earlier in the file, such as an unknown macro in front of a member.
+- In C, an `#if` group whose branches aren't whole statements no longer turns into functions named `if`, so functions that were missing or nested inside another are indexed with their calls. Thanks @danusha2345.
+- In C++, a call on a variable, parameter or member declared as a standard-library or other outside type, like `std::string` or `std::vector`, no longer links to a project method that only shares the method's name.
+- In C++, a class written with attribute macros the parser can't read, between `class` and its name or on its members, now keeps its members, so protobuf's generated message classes are no longer missing.
+- In C++, a call on a range-based `for` loop's variable now links to the method of the type the loop declares, rather than one matched by the variable's name alone.
+- In C++, a call made with `->` on a `std::unique_ptr`, `std::shared_ptr`, `std::optional` or a container's iterator, or on an element a container hands out, now links to that method of the type it holds.
+- In C++, a call a method makes with no receiver, or through `this->`, now links to the method C++ itself would call, not another class's method of that name. Thanks @danusha2345 for the report. (#1952)
+- In C++, a call on the variable of a range-based `for` loop over `auto` elements now links to the method of the type the loop goes over, and no longer to a project method when the elements are a standard-library type.
+- In C++, a call on a variable, parameter or member declared as one of your classes now links to the method of the class C++ itself finds for that type, or one it inherits, not a namesake nested elsewhere.
+- In C++, a method defined by a macro of the same file is now indexed where the file invokes the macro, so calls to it link.
+- In C++, an explicit specialization of a function or member function template is now indexed under its template's name, so search finds it and calls link to it.
+- In C++, a call to an overloaded function outside a class now links to the overload its arguments fit, by their number and types, and never to one only another source file can see.
+- In C, a call now links to the function of that name its own file can see: its own, else one a header it includes defines, else one another source file defines without `static`.
+- In C, a function whose return type is written as a macro call, like `GIT_EXTERN(int) git_blob_dup(…);`, is now indexed, and calls to it link to it. Thanks @xhoms and @danusha2345. (#2470)
+- In C++, text inside a string literal is no longer taken for a variable's declaration, so a later call on a variable of that name is no longer matched against the type that text seemed to name.
+- In C++, a call on an `auto` variable now links to the method of the class its initializer gives it, read from a cast, `new`, `std::make_unique` or a function's declared return type.
+- In C++, a call on a data member of the calling method's class, or of a class it derives from, now links to the method of the member's type wherever the class is declared.
+- In C++, a member declared inside an anonymous union or struct is now found as a member of the class around it, so calls on it link to its type's methods, as in protobuf's generated messages.
+- In C++, a type a header names for a class its source file defines, like the `Rep` of a pimpl's `Rep* rep_`, is now found for the code in that source file, so calls through it link to the right classes.
+- In C++, a `->` on a value of one of your own classes now follows that class's `operator->`, or its `operator*`, as C++ does, so calls through your iterators and smart-pointer wrappers link to the right classes.
+- In C++, a variable, parameter or member whose declaration puts a qualifier or an annotation around its name, like `Env* const env_;`, is now read for its type, so calls on it link to the declared class's methods.
+- In C++, a call on a name a structured binding declares, or on what a `std::function` returns, now links to the method of the type C++ gives it.
+- In C++, a call written without a receiver in a gtest `TEST_F` or `TEST_P` body now links to the test fixture's method, its own or one it inherits, instead of a namesake in another class.
+- In C++, a call made with `->` on an `absl::StatusOr`, an `absl::optional` or an `absl::NoDestructor` now links to the method of the class it holds, as one on a `std::unique_ptr` does.
+- In C and C++, a call or a type name no longer links to something only another source file can see, like a class a `.cc` file declares for itself or anything in its unnamed `namespace { … }`.
+- In C++, a call to an overloaded method, on a variable or without a receiver, now links to the overload its arguments fit, by how many there are and then by their types.
+- In C++, a nested class defined outside the class it belongs to, like `struct BlockBasedTable::Rep { … }`, is now indexed under its own name with its methods and members, so search and `codegraph_explore` find it.
+- In C++, a call whose receiver's type can't be read no longer links to a method of a class nested in the class the receiver's name suggests, or of a class whose name only contains that name.
+- In C++, an alias that names a class through a class derived from the one that declares it now leads to that class, so objects created through the alias link to the class rather than the alias.
+- In C++, a name written in a googletest `TEST_F` or `TEST_P` body now finds the test fixture's nested types first, and a class declared inside a function is only found from that function.
+- In C and C++ tests, a name that several files declare now links to the one the test's own includes declare, when there is one, not one in a file the test never includes.
+- In C and C++ code outside tests too, a name that several files declare now links to the one the file's own includes declare, when there is one.
+- In C, C++ and Objective-C, a call into a function that another of the three languages defines now links to it even when the name has more than one definition. Thanks @ferrine. (#1662)
+- In C and C++, a call of a function a header declares now links to its definition even when the file that defines it reaches that header only through other headers.
+- In C++, a declaration continued on a line that starts with `*` is now read rather than skipped as a comment, and code commented out in a `/* … */` block, or a string literal's text, is no longer read as a declaration.
+- In C++, a call with a comparison or a shift among its arguments, like `WriteVarint(num << 3, s)`, is now read with the right number of arguments, so it links to the overload that fits.
+- In C++, a call passing `nullptr` now links to the overload that takes a `std::nullptr_t` rather than one taking a pointer, and a call no longer links to an overload declared `= delete`.
+- In C++, a variable or parameter declared over more than one line, with its type on a line above its name, now has its type read, so calls on it link to that class's methods.
+- In C++, a variable initialized from a call of a member function template with explicit template arguments now has the type that template returns for them, so calls on it link to that class's methods.
+- In C and C++, a call written from the global scope, like `::leveldb::RepairDB(…)`, now links to the function of exactly that name, and one through a namespace alias to the function in the aliased namespace.
+- In C and C++, a struct, class, union or enum defined in a variable declaration, like `struct Foo { … } foo;`, is now indexed with its methods and enum values, and an unnamed one takes the variable's name.
+- In C and C++, a macro alone on its line right below an `#include <…>`, like GLib's `G_BEGIN_DECLS`, no longer hides the declaration that follows it, as it did in nearly every GLib header.
+- In C++, every name a declaration lists, like `data_` in `Table *index_, *data_;`, now has the declaration's type, so calls on it link to that class's methods, not just calls on the first name.
+- In C++, a call on a parameter, a local lambda or functor, a lambda's parameter or a range-`for` variable no longer links to a function or method elsewhere that only shares its name.
+- In C++, a call through a class the index doesn't hold, like protobuf's `FeatureSet::descriptor()`, no longer links to the same-named method of a class that only shares a word with it.
+- In C++, a call through a namespace, like `fmt::ptr(p)`, no longer links to a class's method that only shares its name, and a call through a namespace a macro opens now links to what that namespace declares.
+
+#### Go and Rust
+
+- In Go, calls through a receiver or parameter of an unexported type, the usual shape of gRPC and HTTP handlers, now resolve within that type's own package, including methods it gets by embedding. Thanks @GoDiao. (#2323)
+- In Go, a type a file gets from a dot import is now looked up in that package, not a same-named type elsewhere, and a name from an outside package's dot import no longer links to a project type. Thanks @GoDiao. (#2323)
+- In Go, a call through a type assertion, like `srv.(KVServer).Range(ctx, in)` in generated gRPC code, now links to the asserted type's method, so gRPC handlers no longer point at the `Unimplemented…Server` stub.
+- In Go, a call through a variable that holds a type assertion's result, like `st.Fetch(key)` after `st := v.(storage.Store)`, now links to that method of the asserted type, as a call through the assertion itself does.
+- In Go, a method called on an element of a slice, array or map, like `pods[i].DeepCopy()`, now links to that method of the element's type, and to nothing when that type is built-in or from outside your project.
+- In Go, a method called further along a chain, like `Where` and `First` in a GORM query, now resolves through the type the chain has reached, not by its name alone. Thanks @BX-D and @inth3shadows. (#2543)
+- In Go, a method called on a variable holding a call's result, like `r.Reset()` after `r := newRing()`, now links to the returned type's method, not one that only shares its name. Thanks @danusha2345. (#1954)
+- In Go, a conversion like `Category(s)` now counts as a use of the type, and calls from external tests or to a per-platform definition now link where Go says they go. Thanks @inth3shadows for the report. (#2581)
+- In Go, a method declared in a file too large to index, like a Kubernetes API type's `String`, is no longer replaced by the same-named method of a type it embeds, like `TypeMeta`'s `String`.
+- In Go, calls into a module whose `go.mod` isn't at the project root now resolve, and a name written through a package links to that package's symbol. Thanks @GoDiao and @danusha2345. (#2322)
+- In Go, an exported type written without a package, like `Node` in `func Walk(v Visitor, node Node)`, now links to the type of that name in its own package, not a same-named struct in an unrelated package.
+- In Go, a function or method passed as a value, like `sync.Pool{New: wm.new}`, now shows the function that passes it among its callers even when it is named `new` or `nil`, so it no longer looks unused.
+- In Go, a type in a parameter, a result or a composite literal now always links to a type, never to a method or function that shares its name, and to its own package's type when there is one.
+- In Go, a type declared on its own now keeps the comment above it as its documentation, as one in a `type ( … )` group did, and a comment at the end of a code line no longer documents the declaration below it.
+- In Go, a declaration's documentation is now just the comment right above it, as `go doc` shows it, so a banner, TODO or commented-out code separated from it by a blank line no longer becomes part of it.
+- In Go, a comment directive above a declaration, like `//go:embed static`, is no longer part of its documentation, as `go doc` shows it.
+- In Go, a constant in a `const ( … )` group now keeps the doc comment written above it, instead of the group's comment, so searching for what a constant means can find it.
+- In Go, variables declared in a `var ( … )` block, like gin's `binding.JSON` or prometheus's metric counters, are now indexed with their doc comments, so the calls and types in their values are recorded.
+- In Rust, code that uses an enum only through its variants, like a `Mode::B =>` match arm, now counts in that enum's callers and impact, linked to the enum declaring the variant. Thanks @mg-mg-mg and @danusha2345. (#2328)
+- In Rust, a call through a module path, like `crate::util::take(3)`, and a `use` of a function now link to the function that module declares, not a same-named method or nested function. Thanks @danusha2345. (#2308)
+- In Rust, a renamed `use`, a `use` inside a function and a path through a `pub use` now reach the item they name, and a call to a local or parameter named like a function no longer links to it. Thanks @danusha2345. (#2308)
+- In Rust, a call through a type that a path or `use` names, like `ItemPool::for_def(…)`, now links to that type's own function or variant, even when a same-named type elsewhere has one too. Thanks @BGamboa13. (#2631)
+- In Rust, a module loaded with `#[path = "…"]`, like tests kept in another folder, is now part of the module that declares it, so its `use super::*`, `super::` and `crate::` start from there. Thanks @seonghobae. (#1892)
+- Axum and Actix routes now link to their handler when rustfmt puts it on a later line or its name also appears elsewhere on the line. Thanks @mg-mg-mg and @danusha2345. (#2326)
+- In Go, an interface that embeds another, like gin's `IRouter` embedding `IRoutes`, now links to it, so `codegraph_explore` and impact show the embedded interface as its base.
+- In Go, working out which structs implement an interface now counts the methods of the interfaces it embeds and those a struct gets from the types it embeds, so `codegraph_explore` lists the right implementations.
+- In Go, the methods a type gets from an embedded standard-library type, or from the built-in `error`, now count when working out which types implement an interface.
+- In Go, a call through an interface now reaches a method that the implementing struct gets from a type it embeds, picked the way Go picks it, so `codegraph_explore`'s call path no longer stops at the interface.
+- In Go, a type defined over a slice, map, function or basic type now counts as implementing the interfaces its methods satisfy, just as a struct does, so calls through the interface reach its methods.
+- In Go, a type now counts as implementing an interface only when its methods take and return the interface's types, not just as many of them, so a call through the interface no longer goes to a method it never reaches.
+- In Go, a type alias is now indexed and links to the type it names, so impact on that type reaches code using the alias, and a method called on a value of the alias's type reaches the aliased type's method.
+- In Go, a struct that embeds another is no longer treated as overriding the methods it redeclares, so `codegraph_explore`'s call path and impact no longer go from gin's `RouterGroup.Use` into `Engine.Use`.
+- In Go, a call through a struct field that holds a function, like prometheus's `d.refreshf(ctx)`, now reaches the functions put in that field, so `codegraph_explore` follows the flow and names where each is wired in.
+- In Go, a type defined from other types, like gin's `type HandlersChain []HandlerFunc`, now links to the types it is built from, so impact on those types reaches it and the code that uses it.
+- In Go, a struct now links to the types its fields are declared with, not only the ones it embeds, so impact on a type reaches every struct that holds one, and `codegraph_node` lists a struct's field types.
+- In Go, an unexported name used in another file of its package now links to the package's own declaration even when a package nested inside it declares the same name. Thanks @inth3shadows. (#2580)
+- In Go, a method whose name starts with an uppercase letter is now marked exported, so dead-code results no longer list exported methods that code outside the project may call. Thanks @danusha2345. (#1734)
+- In Go, a package-level variable or constant whose name starts with an uppercase letter is now marked exported, so a call through it from another package now links to it. Thanks @ericquan8. (#1521)
+- In Go, each use of a package function as a value, like `apply(run)`, is now read on its own, so a same-named local elsewhere in the function no longer hides it. Thanks @inth3shadows for the report. (#2596)
+- In Go, a method an interface declares now links to the types its parameters and results name, so impact on a type like etcd's `PutResponse` reaches the interface method and every caller that goes through it.
+- In Go, a package imported under an explicit name, like `v3 "go.etcd.io/etcd/client/v3"`, now owns that name even when another import's path ends in it.
+- In Go, a struct or defined type now counts as implementing an interface only when its methods take as many parameters and return as many results as the interface's, not just by matching names.
+- In Go, an interface with an unexported method now counts as implemented only by types that declare that method in the interface's own package, as Go requires, or get it from a type they embed.
+- In Go, a call through an import whose path ends in a version, like `klog.V(2)` after `import "k8s.io/klog/v2"`, no longer links to a project symbol that only shares its name. Thanks @danusha2345. (#2374)
+- In Go, a call is now matched to the package or variable it is actually made on, and a parameter or local named like an import now counts as that variable, so its calls link to its type's methods.
+- In Go, a call through a parameter or local variable named like a standard-library package, such as `context` or `log`, now links to the method it calls rather than being taken for a standard-library call.
+- In Go, a call into one of your own packages that shares its name with a standard-library package now links to your function rather than being taken for the standard library's. Thanks @danusha2345. (#2368)
+- In Go, a call of a method name nearly every type has, like `err.Error()`, now links to that method of the variable's declared type, and to nothing when that type is built into Go or from outside your project.
+- In Go, a call on a parameter or variable declared with a type from another package now links to that type's method, and to nothing when the type comes from outside your project. Thanks @danusha2345. (#1954)
+- In Go, a method call on a package-level variable or constant now links to the method of the type it is declared with, from any file of the package, and to nothing when that type comes from outside your project.
+- In Rust, a call written `Self::new(…)` or `Self::Text(…)` now links to that function or variant of the type whose `impl` it is written in, even when other types have one of the same name.
+- In Rust, a call through a generic type parameter, like `Key::get(…)`, now links to the method its trait bound declares, and `T::default()` under `T: Default` no longer links to one of your types' `default` functions.
+- In Rust, `String::from("…")` no longer links to your own `impl From<YourType> for String` unless it passes a `YourType`, and `files.iter()` links to your trait's implementation only where the trait is imported.
+- In Rust, a method called through `self: Pin<&mut Self>`, `self: Box<Self>`, `self: Rc<Self>` or `self: Arc<Self>` now links the way Rust looks it up, to the type's own method before a trait's of the same name.
+- In Rust, a method called on what `.as_mut()` or `.as_ref()` hands back now links by the type its receiver is declared with, or for a generic type to the method of the trait that bounds it, and one on an `Option` no longer links to an unrelated project method.
+- In Rust, an item declared without `pub` now links only from its own module and those inside it, and a name a `use` brings in from a workspace crate links only to that crate or one it depends on.
+- In Rust, a name a `use` brings in, like `use crate::sync::watch::Receiver`, now links to the item in the module its path leads to, found the way Rust finds it, not to any item of that name in the crate.
+- In Rust, a name brought in only by a glob `use`, like dioxus's `use dioxus::prelude::*`, now links to the item that module passes on, following its re-exports, and only to what the module makes public.
+- In Rust, a name like an `Err(…)` call or a `Response` return type no longer links to a `type` or `const` declared inside an `impl`, which only a path like `Self::Err` names; those are now listed under their type.
+- In Rust, a name written through a path, like `std::ffi::OsStr` or `ast::Pattern`, now links to what that path names, or to nothing for the standard library or another crate, not to a same-named item in the same file.
+- In Rust, a trait's associated type written as `<T as Trait>::Name`, or bound like `Iterator<Item = &str>`, now links only to what it can name, and to nothing through a generic parameter or from a binding.
+- In Rust, a path through a module declared inline in the same file, like `inner::Cell` for a `mod inner { … }` above it, now finds the item however the code is indented, and no longer one in a module nested inside it.
+- In Rust, a method call on a local or parameter, like `opts.build()`, now links to the method of the type it is declared or built with, not a same-named method elsewhere. Thanks @Egrn and @danusha2345. (#2614)
+- In Rust, a variable holding what a method call returns, like `let settings = config.load()?;`, now has the type that method is declared to return, so calls on it link to that type's methods.
+- In Rust, a `for` loop's variable now has the type of an item of what it goes over, and each name in a tuple pattern the type of its part, so calls on them link to that type's methods.
+- In Rust, a call on a field of `self`, like `self.store.save()`, now links to the method of the field's declared type, and a field typed from the standard library or a dependency no longer links to a project namesake.
+- In Rust, a method called through a chain of fields, like `self.inner.config.port()`, or on a struct literal now links to the method of the last field's or the literal's type. Thanks @Egrn and @danusha2345. (#2614)
+- In Rust, a call on what a method returns, like `self.store().put(…)`, now links to the method of the type it returns, and calls through several fields keep their whole receiver. Thanks @jocax for the report. (#2836)
+- In Rust, a call written with a turbofish, like `parse_config::<Settings>()`, now links to the function it calls.
+- In Rust, a call through a value's declared type now reads the declaration in scope at the call, not a same-named `let` in an earlier block or a struct literal's field above it.
+
+#### Dart, Delphi, Ruby, Shopify Liquid, CFML, PHP, Erlang and COBOL
+
+- In Dart, reading a getter, like `box.area`, now counts as calling it in `codegraph callers` and impact, and a method an extension adds to an enum now links too. Thanks @brookly255-lv for the report. (#2338)
+- In Dart, a type is now linked from more places it is written, like an `extension … on` target, a field or a generic argument, so `callers` and impact reach the code using it. Thanks @mg-mg-mg for the report. (#2327)
+- In Dart, a `typedef` now links to the types it is built from, and an old-style typedef with a return type is indexed under its own name instead of its return type's. Thanks @mg-mg-mg for the report. (#2327)
+- In Dart, what a top-level variable's or a field's initializer calls, creates and reads is now linked, so in Riverpod apps `callers`, impact and `codegraph_explore` follow a provider to the code it builds.
+- In Dart, a call further down a chain, like Riverpod's `FutureProvider.autoDispose.family(…)`, now links to the method of the type the chain before it produces, or to nothing when that can't be worked out. (#750)
+- In Dart, calling a parameter or a local variable, like a Bloc handler's `emit(…)`, no longer links the call to an unrelated function of that name or to an inherited method like `Bloc.emit`.
+- In Dart, `const` constructors and redirecting factories, like flutter_bloc's `const BlocProvider.value(…)`, are now indexed, and a call through a class name reaches only that class's constructors and static members.
+- In Dart, a call that passes a type argument, like `ref.read<Repo>(repoProvider)`, is no longer read as two comparisons, so it links to the method or class it calls and the type counts as used.
+- In Dart, a constructor or member written without a body, like `Foo._();` or an abstract method, now keeps the `///` documentation and annotations above it, as one with a body already did.
+- In Dart, a function or method now keeps the `///` documentation written above its annotations, like the doc on a widget's `@override Widget build(…)`, so searching for words in it finds the symbol.
+- In Dart, a call on what a generic lookup returns, like Provider's `Provider.of<CartModel>(context, listen: false).add(item)`, now links to that method of the type in the angle brackets. (#750)
+- In Dart, a comment inside a chain of calls no longer loses part of it, so a call like `box.grow /* by */ (3)` links to its method and a getter read after a comment counts as a use.
+- In Dart, a call, constructor call or type written without a receiver now links only to a declaration the file can see, following `export` chains, `show`, `hide` and `as` prefixes as Dart does.
+- In Dart, an `import` or `export` now links to the file it names instead of any project file with the same name, so `codegraph affected` and the files listed as using a file are no longer thrown off.
+- In Dart, a `part` directive, like `part 'user.g.dart';`, now links a library to the part's file, so a change to a part reaches the library and the code that imports it in `codegraph affected`.
+- In Dart, a private name declared in another file of the same library, like json_serializable's `_$UserFromJson(json)` in a `.g.dart` part, now links again. Thanks @libin1528 and @maxmilian. (#2466)
+- In Dart, an annotation now links to the constant or constructor it names, like `@riverpod` to Riverpod's `const riverpod = Riverpod();`, instead of a method or getter that only shares its name.
+- In Dart, an annotation is no longer lost when a comment sits between it and the declaration, like `@override` followed by `// ignore: must_call_super`.
+- In Dart, a call through an import prefix, like `http.get(…)` after `import 'package:http/http.dart' as http;`, now links to what that library exports, or to nothing for a package outside your project.
+- In Delphi, a routine with an attribute on a parameter, like `const [ref] AValue: Integer`, is now indexed with its calls, and so is every class member declared after it. Thanks @stalexteam. (#2545)
+- In Delphi, a `for … in` loop that declares its variable inline, like `for var lItem in AList do`, now has its calls indexed, and a call on a typed loop variable reaches that type's method. Thanks @stalexteam. (#2546)
+- In Delphi, a call made on another call's result, like `List[IndexOf(Name)].Free`, now has its inner calls indexed too, and a typecast like `TButton(Sender).Caption` counts as a use of the type. Thanks @stalexteam. (#2547)
+- In Delphi, a routine called without parentheses now counts as a call, and a method given to an event, like `OnClick := ButtonClick`, is linked as a reference. Thanks @OleksiyPenkov, @equipados and @drakeo338. (#2514)
+- In Delphi, a call to something the compiler provides, like `SizeOf(X)` or `Inc(N)`, in any letter case, no longer links to a project method, field or variable that shares its name. Thanks @OleksiyPenkov. (#2514)
+- In Delphi, a routine declared inside another is now indexed as a routine of its own, like `TFoo::Bar::Inner`, with the calls its body makes. Thanks @OleksiyPenkov. (#2550)
+- In Delphi, a call through a chain of fields and methods, like `TLogger.Create.Write('x')`, now links to the method of the class each step is declared to give, not any method that shares the last name. Thanks @OleksiyPenkov.
+- In Delphi, a unit with a re-published property like `property OwnsObjects;`, a conditional after a routine header, a bare `raise` or an unnamed record field is now indexed whole, instead of losing the code after that line.
+- In Delphi, a constant read in a routine's body is no longer credited to the last routine nested inside it.
+- In Ruby, a call on a class written with its namespace, like `Billing::ChargeCard.call(…)`, now links the caller to that class and to the class method it calls. Thanks @james-jang and @drakeo338. (#2503)
+- In Ruby, a call to a method ending in `!` or `?` now links when its receiver's class is known, and so does a method called straight on a new object, like `CacheWriter.new(key).write_cache`. Thanks @ricobl.
+- In Ruby, a call on an instance variable, like `@writer.flush`, now links to the method of the class the variable holds when the class's `initialize` sets it to a new object of one class.
+- In Ruby, a call now follows a class's real ancestors in the order Ruby looks a method up, as the calling file's test suite loads them, and a call on a class reaches what it `extend`s and what the concerns it includes add to it.
+- In Ruby, a class name like `Topic` now links to the class Ruby's constant lookup finds where the name is written, and a call with no receiver to the method Ruby runs first, so classes of one name in different test suites or namespaces are no longer mixed up.
+- In Ruby, a call on a method's parameter now links to the right class when every call of that method in the project passes a value of one class.
+- In Ruby, a class method, `def self.build` or a `def` inside `class << self`, is now told apart from an instance method of the same name, so a call on the class or on an instance links to the right one.
+- JSON files in a `templates` or `sections` folder are now read as Shopify Liquid only inside a Shopify theme, so a .NET project template's `template.json` no longer shows up as an empty Liquid file.
+- In a repository with more than one Shopify theme, a theme's `{% render %}`, `{% include %}` and `{% section %}` tags now link only to that theme's own snippets and sections, where Shopify looks for them.
+- In Shopify themes, `codegraph sync` and the file watcher now link a section or snippet to the files that name it when it is added after them or comes back after being deleted, so it no longer looks unused.
+- A Shopify JSON template or section group saved by the theme editor, which writes a comment at the top, now links the sections it lists, so they no longer look unused. Thanks @Puma7. (#2494)
+- In Liquid, a variable declared with `{% capture %}` is now indexed like one declared with `{% assign %}`, so search and `codegraph_explore` can find it. Thanks @Puma7. (#2498)
+- In Liquid, a variable whose name has a hyphen, like `{% capture icon-cart %}`, is now indexed under its whole name, so search and `codegraph_explore` find it. Thanks @Puma7. (#2498)
+- In CFML, `createObject` now links to the component it creates, found by its path the way `extends` finds one, and a chained `createObject(…).init()` reaches that component's `init`. Thanks @HarryMuc. (#2652)
+- In CFML, a `<cfquery>` or `<cfscript>` block the parser can't read no longer marks its whole file as contributing nothing, so `codegraph init` and `codegraph status` no longer flag the file. Thanks @HarryMuc. (#2654)
+- In CFML, a dotted `extends` like `extends="contenscms.core.basecore"` now links to the component it names even when a test suite mirrors its folder and file name. Thanks @HarryMuc for the report. (#2650)
+- In CFML, `<cfinclude template="formlistshared.cfm">` and its script forms now link the component, function or template they are in to the file they include. Thanks @HarryMuc for the report. (#2651)
+- In PHP, a class written through a namespace alias in a different case than its `use` statement now links to that class, since PHP reads namespace names without regard to case. Thanks @danusha2345. (#2369)
+- In PHP, a call on a variable now reaches the method its class really has, found through the file's namespace and `use` imports, and a Laravel facade's static call reaches the class its `getFacadeAccessor()` names.
+- In PHP, `parent::`, `self::` and `$this->` inside an anonymous class, like `new class extends ArrayStore { … }`, now reach what that class extends and the traits it uses, not those of the class whose method creates it.
+- In Drupal, an import of a class whose short name another class shares, like `use Drupal\commerce_price\Price`, no longer also links to that other class.
+- In Erlang, a comment inside an argument or parameter list no longer counts as an argument, so the call links to the function of its real arity. Thanks @Dshuishui. (#1619)
+- In COBOL, asking `codegraph_explore` about a copybook by name, like `CVACT01Y`, now answers with its source and every `COPY` or `EXEC SQL INCLUDE` that includes it, instead of "No relevant code found". Thanks @popolusiak. (#2342)
 
 ## [1.6.2-pennix.1] - 2026-10-14
 
@@ -1512,3 +2082,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2-pennix.4]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.4
 [1.6.2-pennix.5]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.5
 [1.6.2-pennix.6]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.6
+[1.6.3]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.3

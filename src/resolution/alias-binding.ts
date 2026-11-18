@@ -131,11 +131,12 @@ export function extractLocalExportAliases(content: string): Array<{ exportedName
       }
     }
   }
-  // CommonJS: `exports.setCharset = function setCharset(…)`, `module.exports.x = impl`.
-  const memberRe = /^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=\s*(?:(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(|([A-Za-z_$][\w$]*)\s*;?[ \t]*$)/gm;
+  // CommonJS: `exports.setCharset = function setCharset(…)`, `module.exports.x = impl`,
+  // and a named class expression, `exports.Router = class Router {…}` (#2499).
+  const memberRe = /^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=\s*(?:(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(|class\s+(?!extends\b)([A-Za-z_$][\w$]*)|([A-Za-z_$][\w$]*)\s*;?[ \t]*$)/gm;
   let member: RegExpExecArray | null;
   while ((member = memberRe.exec(content)) !== null) {
-    out.push({ exportedName: member[1]!, localName: member[2] ?? member[3]! });
+    out.push({ exportedName: member[1]!, localName: member[2] ?? member[3] ?? member[4]! });
   }
   // `module.exports = { parse, format: formatDate }`.
   const objectRe = /^[ \t]*module\.exports\s*=\s*\{([^{}]*)\}/gm;
@@ -147,4 +148,15 @@ export function extractLocalExportAliases(content: string): Array<{ exportedName
     }
   }
   return out;
+}
+
+/**
+ * The binding a module's default export is as a whole: `export default
+ * Page;`, `export { Page as default }`. Null for a declaration or an
+ * expression: `export default withAuth(Page)` hands over a call, whose first
+ * identifier is no binding of the module's.
+ */
+export function defaultExportBinding(content: string): string | null {
+  return /(?:^|;)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/m.exec(content)?.[1] ??
+    extractLocalExportAliases(content).find((a) => a.exportedName === 'default')?.localName ?? null;
 }

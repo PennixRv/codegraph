@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'child_process';
-import { buildTomlTable, getTomlTable, removeTomlTable, tomlDefinesTable, upsertTomlTable } from '../src/installer/targets/toml';
+import { buildTomlTable, getTomlTable, removeTomlTable, tomlDefinesTable, upsertTomlConnection as upsertTomlTable } from '../src/installer/targets/toml';
 
 const header = 'mcp_servers.codegraph';
 const block = buildTomlTable(header, { command: 'codegraph', args: ['serve', '--mcp'] });
