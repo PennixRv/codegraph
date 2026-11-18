@@ -80,7 +80,7 @@ async function contextFor(value: unknown): Promise<string> {
         continue;
       }
       const nodes = cg.getNodesByName(token);
-      if (nodes.length > 1) return CODEX_GRAPH_NUDGE;
+      if (nodes.length > 1) continue;
       for (const node of nodes) if (!anchors.some(n => n.id === node.id) && anchors.length < 2) anchors.push(node);
     }
     // A file is a fallback anchor; explicit symbols must not lose to unrelated declarations.
