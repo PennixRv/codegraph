@@ -12,6 +12,9 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.6.3-pennix.1] - 2026-11-18
+
 ### Pennix
 
 - 同步冻结上游 v1.6.3 后的 main，保留工作树隔离、来源核验、受管升级和 Linux x64 双包边界。
@@ -2083,3 +2086,4 @@ Thanks @andreinknv for the substantive draft this release was based on.
 [1.6.2-pennix.5]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.5
 [1.6.2-pennix.6]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.2-pennix.6
 [1.6.3]: https://github.com/colbymchenry/codegraph/releases/tag/v1.6.3
+[1.6.3-pennix.1]: https://github.com/PennixRv/codegraph/releases/tag/v1.6.3-pennix.1
