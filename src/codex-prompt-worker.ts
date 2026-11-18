@@ -71,15 +71,20 @@ async function contextFor(value: unknown): Promise<string> {
       .map(m => m[1] ?? m[0]);
     const candidates = [...new Set([...paths, ...extractCodeTokens(input.prompt)])].slice(0, 4);
     const anchors: Node[] = [];
+    const fileAnchors: Node[] = [];
     for (const token of candidates) {
       const relative = path.isAbsolute(token) ? path.relative(root, token) : token;
       const file = cg.getFile(relative);
-      const nodes = file
-        ? cg.getNodesInFile(relative).filter(n => n.kind !== 'file').slice(0, 2)
-        : cg.getNodesByName(token);
-      if (!file && nodes.length > 1) return CODEX_GRAPH_NUDGE;
+      if (file) {
+        fileAnchors.push(...cg.getNodesInFile(relative).filter(n => ['function', 'method', 'class'].includes(n.kind)).slice(0, 2));
+        continue;
+      }
+      const nodes = cg.getNodesByName(token);
+      if (nodes.length > 1) return CODEX_GRAPH_NUDGE;
       for (const node of nodes) if (!anchors.some(n => n.id === node.id) && anchors.length < 2) anchors.push(node);
     }
+    // A file is a fallback anchor; explicit symbols must not lose to unrelated declarations.
+    if (anchors.length === 0) anchors.push(...fileAnchors.slice(0, 2));
     if (anchors.length === 0) return CODEX_GRAPH_NUDGE;
     const contributing = new Map<string, { path: string; contentHash: string | null }>();
     const label = (node: Node): string => `${node.qualifiedName || node.name} (${node.filePath}:${node.startLine})`;
