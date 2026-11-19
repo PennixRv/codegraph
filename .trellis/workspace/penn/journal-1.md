@@ -101,3 +101,26 @@ P1 已通过完整原生测试和正式 Release CI，公开 GitHub 载荷、来�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: 修正 Git 重入缺口并完成 .4 双机交付
+<!-- trellis-session: v=2 fp=7e62bfdf9a15f45c -->
+
+**Date**: 2026-11-19
+**Task**: 修正 Git 重入缺口并完成 .4 双机交付
+**Branch**: `main`
+
+### Summary
+
+最终 .4 正式全量 CI、公开载荷与来源证明、两机原生安装及实际 Codex/MCP 全链路通过；原生 no-op、recover idle，缺口关闭并再次归档；根任务继续固定最终引用和整体收尾。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `684b4927` | fix: preserve explicit Git project binding on initialization reentry |
+| `427a71b6` | docs(changelog): promote [Unreleased] into [1.6.3-pennix.4] |
+
+### Status
+
+[OK] **Completed**

@@ -36,7 +36,7 @@
         "delivery_review_and_closeout"
       ],
       "current_phase_id": null,
-      "input_revision": "9",
+      "input_revision": "15",
       "phases": {
         "goal_exploration_and_requirements": {
           "status": "accepted",
@@ -64,36 +64,36 @@
         },
         "solution_design_and_convergence": {
           "status": "accepted",
-          "input_revision": "4",
+          "input_revision": "10",
           "artifact_revision": "24c5f8f80c46d536105042102fc3b0e3b87a9caab4f8e203f36101b1099ace7b",
           "artifact_refs": [
             "prd.md"
           ],
-          "result_revision": "1",
+          "result_revision": "2",
           "result_ref": "prd.md",
           "outcome_kind": "implementation_contract",
           "reason": null,
           "evidence_refs": [
-            "prd.md"
+            "git-reentry-defect.md"
           ],
           "acceptance": {
             "artifact_revision": "24c5f8f80c46d536105042102fc3b0e3b87a9caab4f8e203f36101b1099ace7b",
-            "result_revision": "1",
-            "input_revision": "4",
+            "result_revision": "2",
+            "input_revision": "10",
             "task_route_revision": "1",
             "evidence_refs": [
-              "prd.md"
+              "git-reentry-defect.md"
             ]
           }
         },
         "task_implementation": {
           "status": "accepted",
-          "input_revision": "6",
-          "artifact_revision": "2921101eadf48ee05544cff0d31a2c9e6e00f1b636b144a04e9f1f50f6e87f67",
+          "input_revision": "12",
+          "artifact_revision": "09559f8efe5871151a83ec7f614d925499d37af8f566a5acf29702934a8abf08",
           "artifact_refs": [
             "execution.md"
           ],
-          "result_revision": "1",
+          "result_revision": "2",
           "result_ref": "execution.md",
           "outcome_kind": "verified",
           "reason": null,
@@ -101,9 +101,9 @@
             "execution.md"
           ],
           "acceptance": {
-            "artifact_revision": "2921101eadf48ee05544cff0d31a2c9e6e00f1b636b144a04e9f1f50f6e87f67",
-            "result_revision": "1",
-            "input_revision": "6",
+            "artifact_revision": "09559f8efe5871151a83ec7f614d925499d37af8f566a5acf29702934a8abf08",
+            "result_revision": "2",
+            "input_revision": "12",
             "task_route_revision": "1",
             "evidence_refs": [
               "execution.md"
@@ -112,12 +112,12 @@
         },
         "delivery_review_and_closeout": {
           "status": "accepted",
-          "input_revision": "8",
-          "artifact_revision": "930b9e6a697e510fc1910bdb8f4ea84c4061f701680bf04261c25bcb96758eca",
+          "input_revision": "14",
+          "artifact_revision": "3a3e8dc5d0b097fcca6084af6402c266480687b65ab1116760d04de83dba50a4",
           "artifact_refs": [
             "closeout.md"
           ],
-          "result_revision": "1",
+          "result_revision": "2",
           "result_ref": "closeout.md",
           "outcome_kind": "delivery_ready",
           "reason": null,
@@ -125,9 +125,9 @@
             "execution.md"
           ],
           "acceptance": {
-            "artifact_revision": "930b9e6a697e510fc1910bdb8f4ea84c4061f701680bf04261c25bcb96758eca",
-            "result_revision": "1",
-            "input_revision": "8",
+            "artifact_revision": "3a3e8dc5d0b097fcca6084af6402c266480687b65ab1116760d04de83dba50a4",
+            "result_revision": "2",
+            "input_revision": "14",
             "task_route_revision": "1",
             "evidence_refs": [
               "execution.md"
@@ -139,7 +139,7 @@
       "implementation_authorization": {
         "contract_ref": "prd.md",
         "contract_revision": "24c5f8f80c46d536105042102fc3b0e3b87a9caab4f8e203f36101b1099ace7b",
-        "approval_ref": "prd.md",
+        "approval_ref": "git-reentry-defect.md",
         "task_route_revision": "1"
       },
       "closeout_disposition": "delivery_ready",
@@ -154,7 +154,30 @@
           "artifact_revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
         }
       },
-      "return_record": null
-    }
+      "return_record": {
+        "from": "delivery_review_and_closeout",
+        "to": "solution_design_and_convergence",
+        "return_kind": "contract_change",
+        "authorization_retained": false,
+        "reason": "终态重开已清除实施授权，沿不变P1合同重新接受并登记根任务已有整体授权",
+        "evidence_refs": [
+          "git-reentry-defect.md"
+        ],
+        "task_route_revision": "1"
+      }
+    },
+    "task_lifecycle_recoveries": [
+      {
+        "from_status": "completed",
+        "to_status": "planning",
+        "reason": "安装版本 Git 项目重入暴露空值赋值短路导致参数未消费，原P1合同内修复并发行新补丁",
+        "evidence_refs": [
+          "git-reentry-defect.md"
+        ],
+        "reopened_at": "2026-11-19T05:16:18.210720+00:00",
+        "terminal_completed_at": "2026-11-19",
+        "terminal_cancellation": null
+      }
+    ]
   }
 }

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-11-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~103 | Active |
+| `journal-1.md` | ~126 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | 日期（Date） | 标题（Title） | 提交（Commits） | 分支（Branch） |
 |---|------|-------|---------|--------|
+| 4 | 2026-11-19 | 修正 Git 重入缺口并完成 .4 双机交付 | `684b4927`, `427a71b6` | `main` |
 | 3 | 2026-11-19 | 完成受限项目自动初始化原生能力与正式发行 | `8bd371d0`, `9f28a6e6`, `6eb9c79c`, `b99815fe` | `main` |
 | 2 | 2026-10-21 | CodeGraph routing owner delivery | `8f3f4aa1ebe2eb4e13bec63dc4669adea47f2296`, `7236a5d02f4645b51d685639a57cc9fcab97a6cf` | `main` |
 | 1 | 2026-10-20 | 完成 CodeGraph main 合入与 Linux x64 发布 | `18214c57` | `main` |
