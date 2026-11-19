@@ -3,7 +3,7 @@
   "name": "project-init-native",
   "title": "补齐受限项目自动初始化原生能力",
   "description": "承接根任务 project-init-trust-automation 已批准 P1；统一项目根边界、禁止 Git Hook 回退、健康核验及失败退出，正式发布并配合集成。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "penn",
   "assignee": "penn",
   "createdAt": "2026-11-19",
-  "completedAt": null,
+  "completedAt": "2026-11-19",
   "branch": "main",
   "base_branch": "main",
   "worktree_path": null,
@@ -35,8 +35,8 @@
         "task_implementation",
         "delivery_review_and_closeout"
       ],
-      "current_phase_id": "task_implementation",
-      "input_revision": "5",
+      "current_phase_id": null,
+      "input_revision": "9",
       "phases": {
         "goal_exploration_and_requirements": {
           "status": "accepted",
@@ -87,28 +87,52 @@
           }
         },
         "task_implementation": {
-          "status": "active",
-          "input_revision": "5",
-          "artifact_revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "artifact_refs": [],
-          "result_revision": "0",
-          "result_ref": null,
-          "outcome_kind": null,
+          "status": "accepted",
+          "input_revision": "6",
+          "artifact_revision": "2921101eadf48ee05544cff0d31a2c9e6e00f1b636b144a04e9f1f50f6e87f67",
+          "artifact_refs": [
+            "execution.md"
+          ],
+          "result_revision": "1",
+          "result_ref": "execution.md",
+          "outcome_kind": "verified",
           "reason": null,
-          "evidence_refs": [],
-          "acceptance": null
+          "evidence_refs": [
+            "execution.md"
+          ],
+          "acceptance": {
+            "artifact_revision": "2921101eadf48ee05544cff0d31a2c9e6e00f1b636b144a04e9f1f50f6e87f67",
+            "result_revision": "1",
+            "input_revision": "6",
+            "task_route_revision": "1",
+            "evidence_refs": [
+              "execution.md"
+            ]
+          }
         },
         "delivery_review_and_closeout": {
-          "status": "not_started",
-          "input_revision": "1",
-          "artifact_revision": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "artifact_refs": [],
-          "result_revision": "0",
-          "result_ref": null,
-          "outcome_kind": null,
+          "status": "accepted",
+          "input_revision": "8",
+          "artifact_revision": "930b9e6a697e510fc1910bdb8f4ea84c4061f701680bf04261c25bcb96758eca",
+          "artifact_refs": [
+            "closeout.md"
+          ],
+          "result_revision": "1",
+          "result_ref": "closeout.md",
+          "outcome_kind": "delivery_ready",
           "reason": null,
-          "evidence_refs": [],
-          "acceptance": null
+          "evidence_refs": [
+            "execution.md"
+          ],
+          "acceptance": {
+            "artifact_revision": "930b9e6a697e510fc1910bdb8f4ea84c4061f701680bf04261c25bcb96758eca",
+            "result_revision": "1",
+            "input_revision": "8",
+            "task_route_revision": "1",
+            "evidence_refs": [
+              "execution.md"
+            ]
+          }
         }
       },
       "route_dependency_admission": null,
@@ -118,7 +142,7 @@
         "approval_ref": "prd.md",
         "task_route_revision": "1"
       },
-      "closeout_disposition": null,
+      "closeout_disposition": "delivery_ready",
       "skip_records": {
         "decision_space_construction_and_merging": {
           "reason": "根任务已完成候选比较并整体批准，组件沿已接受P1合同执行",

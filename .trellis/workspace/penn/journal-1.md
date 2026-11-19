@@ -76,3 +76,28 @@
 ### 下一步（Next Steps）
 
 - 由根仓库完成最终 gitlink 固定、runner/offline/full-local 验收和根任务归档。
+
+
+## Session 3: 完成受限项目自动初始化原生能力与正式发行
+<!-- trellis-session: v=2 fp=b887ef762e22d4ba -->
+
+**Date**: 2026-11-19
+**Task**: 完成受限项目自动初始化原生能力与正式发行
+**Branch**: `main`
+
+### Summary
+
+P1 已通过完整原生测试和正式 Release CI，公开 GitHub 载荷、来源证明、npm 包及两机平台内容核验通过；原生接受并归档。根任务继续负责消费方和整体双机验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8bd371d0` | feat: support bounded automatic project initialization |
+| `9f28a6e6` | fix: reject conflicting project boundary options |
+| `6eb9c79c` | release: align UI package version with engine |
+| `b99815fe` | docs(changelog): promote [Unreleased] into [1.6.3-pennix.3] |
+
+### Status
+
+[OK] **Completed**
