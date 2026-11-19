@@ -102,6 +102,7 @@ export { FileWatcher, MCPServer } from './lazy-engine';
  * Options for initializing a new CodeGraph project
  */
 export interface InitOptions {
+  strictWorktree?: boolean;
   /** Whether to run initial indexing after init */
   index?: boolean;
 
@@ -430,7 +431,7 @@ export class CodeGraph {
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    const instance = new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot, options.strictWorktree);
 
     // Run initial indexing if requested
     if (options.index) {
@@ -530,7 +531,7 @@ export class CodeGraph {
    * files is O(1) regardless of size, reclaims the disk, and sidesteps opening
    * (and running migrations against) the poisoned database entirely.
    */
-  static async recreate(projectRoot: string): Promise<CodeGraph> {
+  static async recreate(projectRoot: string, options: Pick<OpenOptions, 'strictWorktree'> = {}): Promise<CodeGraph> {
     await initGrammars();
     const resolvedRoot = path.resolve(projectRoot);
 
@@ -559,7 +560,7 @@ export class CodeGraph {
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    return new CodeGraph(db, queries, resolvedRoot, options.strictWorktree);
   }
 
   /**

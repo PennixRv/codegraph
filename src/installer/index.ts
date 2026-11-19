@@ -63,6 +63,7 @@ function getVersion(): string {
 }
 
 export interface RunInstallerOptions {
+  projectOnly?: boolean;
   boundWorktree?: string;
   /** Comma-separated target list, or `auto` / `all` / `none`. */
   target?: string;
@@ -87,6 +88,9 @@ export async function runInstaller(): Promise<void> {
 }
 
 export async function runInstallerWithOptions(opts: RunInstallerOptions): Promise<void> {
+  if (opts.projectOnly && (opts.target !== 'codex' || opts.location !== 'local')) {
+    throw new Error('--project-only requires --target codex --location local.');
+  }
   if (opts.boundWorktree && (opts.target !== 'codex' || opts.location !== 'local')) {
     throw new Error('--bound-worktree requires --target codex --location local.');
   }
@@ -242,7 +246,7 @@ export async function runInstallerWithOptions(opts: RunInstallerOptions): Promis
       );
       continue;
     }
-    const result = target.install(location, { autoAllow, promptHook, boundWorktree: opts.boundWorktree });
+    const result = target.install(location, { autoAllow, promptHook, boundWorktree: opts.boundWorktree, projectOnly: opts.projectOnly });
     installedIds.push(target.id);
     for (const file of result.files) {
       if (file.action === 'created') sawCreated = true;

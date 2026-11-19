@@ -62,6 +62,7 @@ export interface WriteResult {
 }
 
 export interface InstallOptions {
+  projectOnly?: boolean;
   boundWorktree?: string;
   /**
    * Whether to write the agent's permissions / auto-allow surface

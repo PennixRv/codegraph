@@ -12,6 +12,12 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Pennix
+
+- 新增 `--project-only`，让首次索引、同步、重建、状态和 local Codex MCP 使用相同的精确项目边界；非 Git 项目也可使用，不借用祖先索引或根外符号链接。
+- `init --no-git-hooks` 在非交互模式也不安装 Git 同步 Hook；已存在的项目绑定和用户策略在 local 重入时保留。
+- 初始化与严格状态区分数据库存在和索引就绪，索引失败返回非零并释放资源；严格门禁涵盖未完成构建、待恢复引用、工作树错配和需要更新的抽取版本。
+
 
 ## [1.6.3-pennix.2] - 2026-11-18
 

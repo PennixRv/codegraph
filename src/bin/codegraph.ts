@@ -63,6 +63,7 @@ import { installFatalHandlers } from './fatal-handler';
 import { relaunchWithWasmRuntimeFlagsIfNeeded } from '../extraction/wasm-runtime-flags';
 import { installCommandSupervision, watchParent } from './command-supervision';
 import { EXTRACTION_VERSION } from '../extraction/extraction-version';
+import { BoundWorktree } from '../sync/worktree';
 import { getTelemetry, TELEMETRY_DOCS, recordIndexEvent } from '../telemetry';
 // Value import, but dependency-free by design so `--help` text can name the
 // default port without dragging node:http into every other subcommand; the
@@ -250,8 +251,9 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
  * Walks up parent directories to find nearest initialized CodeGraph project
  * (must have .codegraph/codegraph.db, not just .codegraph/lessons.db)
  */
-function resolveProjectPath(pathArg?: string): string {
+function resolveProjectPath(pathArg?: string, projectOnly = false): string {
   const absolutePath = path.resolve(pathArg || process.cwd());
+  if (projectOnly) return new BoundWorktree(absolutePath, true).root;
 
   // If exact path is initialized (has codegraph.db), use it
   if (isInitialized(absolutePath)) {
@@ -720,13 +722,15 @@ function applyLocalOnlyGitignore(
  */
 async function runInit(
   projectPath: string,
-  options: { index?: boolean; force?: boolean; verbose?: boolean; yes?: boolean; localOnly?: boolean },
+  options: { index?: boolean; force?: boolean; verbose?: boolean; yes?: boolean; localOnly?: boolean; projectOnly?: boolean; gitHooks?: boolean },
 ): Promise<void> {
   const clack = await importESM('@clack/prompts');
 
   clack.intro('Initializing CodeGraph');
 
+  let initializedGraph: { destroy(): void } | undefined;
   try {
+    if (options.projectOnly) projectPath = new BoundWorktree(projectPath, true).root;
     // Refuse to index your home directory / a filesystem root — it pulls in
     // caches, other projects, and your whole tree (a multi-GB index + watcher
     // churn, and on pre-1.0 macOS a machine-crashing fd blowup, #845).
@@ -742,10 +746,23 @@ async function runInit(
     if (isInitialized(projectPath)) {
       clack.log.warn(`Already initialized in ${projectPath}`);
       clack.log.info('Use "codegraph index" to re-index or "codegraph sync" to update');
+      const { default: CodeGraph } = await loadCodeGraph();
+      const existing = await CodeGraph.open(projectPath, { readOnly: true, strictWorktree: options.projectOnly });
+      try {
+        const state = existing.getIndexState();
+        const changes = existing.getChangedFiles();
+        if (state !== 'complete' || existing.isIndexStale() || existing.getPendingReferenceCount() > 0 ||
+            changes.added.length + changes.modified.length + changes.removed.length > 0 ||
+            existing.getIndexHealth().needsReindex.length > 0 || existing.getLanguageCoverage().unparsedLanguages.length > 0) {
+          clack.log.error('Existing index is not ready. Check `codegraph status --json --strict` and recover with index or sync.');
+          process.exitCode = 1;
+          return;
+        }
+      } finally { existing.destroy(); }
       if (options.localOnly) applyLocalOnlyGitignore(clack, projectPath);
       try {
         const { offerWatchFallback } = await import('../installer');
-        await offerWatchFallback(clack, projectPath, { yes: options.yes });
+        if (options.gitHooks !== false) await offerWatchFallback(clack, projectPath, { yes: options.yes });
       } catch { /* non-fatal */ }
       clack.outro('');
       return;
@@ -763,7 +780,8 @@ async function runInit(
       clack.log.warn(`Found a codegraph.db without the codegraph schema in ${getCodeGraphDir(projectPath)} (left by an interrupted init?) — rebuilding it.`);
     }
     const { default: CodeGraph, getDatabasePath } = await loadCodeGraph();
-    const cg = await CodeGraph.init(projectPath, { index: false });
+    const cg = await CodeGraph.init(projectPath, { index: false, strictWorktree: options.projectOnly });
+    initializedGraph = cg;
     clack.log.success(`Initialized in ${projectPath}`);
     if (options.localOnly) applyLocalOnlyGitignore(clack, projectPath);
     // A fresh index on a Windows drive under WSL gets its own directory (#995).
@@ -802,6 +820,7 @@ async function runInit(
     };
     const result = await runIndex();
     printIndexResult(clack, result, projectPath);
+    if (!result.success || cg.getIndexState() !== 'complete') throw new Error('Initial index did not complete; inspect status and retry with codegraph index.');
     await recordIndexTelemetry(cg, result);
 
     // An empty graph at a git super-repo usually means `.gitignore` excludes
@@ -815,14 +834,15 @@ async function runInit(
 
     try {
       const { offerWatchFallback } = await import('../installer');
-      await offerWatchFallback(clack, projectPath, { yes: options.yes });
+      if (options.gitHooks !== false) await offerWatchFallback(clack, projectPath, { yes: options.yes });
     } catch { /* non-fatal */ }
 
     clack.outro('Done');
-    cg.destroy();
   } catch (err) {
     clack.log.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    initializedGraph?.destroy();
   }
 }
 
@@ -837,7 +857,9 @@ program
   .option('-v, --verbose', 'Show detailed worker lifecycle and memory info')
   .option('-y, --yes', 'Non-interactive: skip every prompt and take the defaults (for scripts / CI / container bootstraps)')
   .option('--local-only', 'Keep .codegraph/ out of git entirely: its .gitignore ignores itself too. Also converts an initialized project')
-  .action(async (pathArg: string | undefined, options: { index?: boolean; force?: boolean; verbose?: boolean; yes?: boolean; localOnly?: boolean }) => {
+  .option('--project-only', 'Keep index and source access inside this exact project root')
+  .option('--no-git-hooks', 'Never install Git sync hooks, including with --yes')
+  .action(async (pathArg: string | undefined, options: { index?: boolean; force?: boolean; verbose?: boolean; yes?: boolean; localOnly?: boolean; projectOnly?: boolean; gitHooks?: boolean }) => {
     await runInit(path.resolve(pathArg || process.cwd()), options);
   });
 
@@ -911,14 +933,15 @@ program
   .option('-f, --force', 'Index even if the path looks like your home directory or a filesystem root')
   .option('-q, --quiet', 'Suppress progress output')
   .option('-v, --verbose', 'Show detailed worker lifecycle and memory info')
-  .action(async (pathArg: string | undefined, options: { force?: boolean; quiet?: boolean; verbose?: boolean }) => {
+  .option('--project-only', 'Keep index and source access inside this exact project root')
+  .action(async (pathArg: string | undefined, options: { force?: boolean; quiet?: boolean; verbose?: boolean; projectOnly?: boolean }) => {
     // An EXPLICIT path names the project to rebuild — it is never a hint to go
     // looking for one. resolveProjectPath walks up to the nearest initialized
     // ancestor, which is right for `codegraph query` run from a subdirectory,
     // but for a full re-index it silently rebuilt the parent's graph under a
     // normal "Done" when <path> had no index of its own (#1524). Only a bare
     // `codegraph index` (cwd) may resolve upward.
-    const projectPath = pathArg ? path.resolve(pathArg) : resolveProjectPath();
+    const projectPath = options.projectOnly ? resolveProjectPath(pathArg, true) : pathArg ? path.resolve(pathArg) : resolveProjectPath();
 
     try {
       // Don't (re)index your home directory / a filesystem root (#845). --force
@@ -969,7 +992,7 @@ program
           // enough to trip the liveness watchdog before scanning even began (#1067).
           // recreate() hands back a fresh, empty instance — no clear() needed. For
           // fast incremental updates use `sync`.
-          const cg = await CodeGraph.recreate(projectPath);
+          const cg = await CodeGraph.recreate(projectPath, { strictWorktree: options.projectOnly });
 
           // Supervise the indexer: self-terminate if orphaned (parent shim killed)
           // or if the main thread wedges — neither was guarded on this path (#999).
@@ -981,7 +1004,7 @@ program
             if (options.quiet) {
               // Quiet mode: no UI, just run against the freshly-recreated graph.
               const result = await cg.indexAll();
-              if (!result.success) process.exit(1);
+              if (!result.success || cg.getIndexState() !== 'complete') throw new Error('Index did not complete.');
               return;
             }
 
@@ -1014,7 +1037,7 @@ program
             }
 
             if (!finalResult.success) {
-              process.exit(1);
+              throw new Error('Index did not complete.');
             }
 
             clack.outro('Done');
@@ -1041,8 +1064,9 @@ program
   .command('sync [path]')
   .description('Sync changes since last index')
   .option('-q, --quiet', 'Suppress output (for git hooks)')
-  .action(async (pathArg: string | undefined, options: { quiet?: boolean }) => {
-    const projectPath = resolveProjectPath(pathArg);
+  .option('--project-only', 'Keep index and source access inside this exact project root')
+  .action(async (pathArg: string | undefined, options: { quiet?: boolean; projectOnly?: boolean }) => {
+    const projectPath = resolveProjectPath(pathArg, options.projectOnly);
 
     try {
       if (!isInitialized(projectPath)) {
@@ -1053,11 +1077,12 @@ program
       }
 
       const { default: CodeGraph } = await loadCodeGraph();
-      const cg = await CodeGraph.open(projectPath);
+      const cg = await CodeGraph.open(projectPath, { strictWorktree: options.projectOnly });
 
       try {
         if (options.quiet) {
-          await cg.sync();
+          const result = await cg.sync();
+          if (result.failedFilePaths?.length) throw new Error('Sync could not index all changed files.');
           return;
         }
 
@@ -1070,6 +1095,7 @@ program
         const result = await cg.sync({
           onProgress: progress.onProgress,
         }).finally(() => progress.stop());
+        if (result.failedFilePaths?.length) throw new Error('Sync could not index all changed files.');
 
         const totalChanges = result.filesAdded + result.filesModified + result.filesRemoved;
         // Sync re-reads changed files only, so a file left alone keeps what an
@@ -1149,8 +1175,9 @@ program
   .description('Show index status and statistics')
   .option('-j, --json', 'Output as JSON')
   .option('--strict', 'Exit 1 unless the index is finished, up to date, and every language that should yield symbols did')
-  .action(async (pathArg: string | undefined, options: { json?: boolean; strict?: boolean }) => {
-    const projectPath = resolveProjectPath(pathArg);
+  .option('--project-only', 'Check this exact project without borrowing an ancestor index')
+  .action(async (pathArg: string | undefined, options: { json?: boolean; strict?: boolean; projectOnly?: boolean }) => {
+    const projectPath = resolveProjectPath(pathArg, options.projectOnly);
     // The directory the user actually ran from, before walking up to the index
     // root. Used to detect when the resolved index lives in a different git
     // working tree (e.g. a nested worktree borrowing the main checkout's index).
@@ -1185,7 +1212,7 @@ program
       // edge write failed with SQLITE_BUSY_SNAPSHOT, "database is locked"
       // (#2913). Read-only, it leaves migrations, index repair and WAL
       // maintenance to the writer.
-      const cg = await CodeGraph.open(projectPath, { readOnly: true });
+      const cg = await CodeGraph.open(projectPath, { readOnly: true, strictWorktree: options.projectOnly });
       const { isRebuildInProgress } = await import('../mcp/writer-lock');
       // A `codegraph index` in another process owns the database: the
       // numbers below are a snapshot of a graph being rebuilt.
@@ -1218,8 +1245,8 @@ program
       // Parse errors are not: one bad fixture shouldn't fail a whole project.
       const totalChanges = changes.added.length + changes.modified.length + changes.removed.length;
       if (options.strict && (
-        rebuildInProgress ||
-        indexState === 'indexing' || indexState === 'partial' || indexState === 'failed' ||
+        rebuildInProgress || worktreeMismatch || reindexRecommended || pendingRefs > 0 ||
+        indexState !== 'complete' ||
         totalChanges > 0 ||
         health.needsReindex.length > 0 ||
         coverage.unparsedLanguages.length > 0
@@ -2381,10 +2408,11 @@ program
   .option('-p, --path <path>', 'Project path (optional for MCP mode, uses rootUri from client)')
   .option('--mcp', 'Run as MCP server (stdio transport)')
   .option('--bound-worktree <path>', 'Bind MCP queries, index and source reads to one Git checkout')
+  .option('--project-only', 'Bind MCP to --path, including projects without Git')
   .option('--no-watch', 'Disable the file watcher (no auto-sync; useful on slow filesystems like WSL2 /mnt drives)')
   .option('--no-telemetry', 'Send no usage telemetry from this server (same as CODEGRAPH_TELEMETRY=0)')
-  .action(async (options: { path?: string; mcp?: boolean; watch?: boolean; telemetry?: boolean; boundWorktree?: string }) => {
-    const projectPath = options.path ? resolveProjectPath(options.path) : undefined;
+  .action(async (options: { path?: string; mcp?: boolean; watch?: boolean; telemetry?: boolean; boundWorktree?: string; projectOnly?: boolean }) => {
+    const projectPath = options.projectOnly ? resolveProjectPath(options.path, true) : options.path ? resolveProjectPath(options.path) : undefined;
 
     // Commander sets watch=false when --no-watch is passed. Route it through
     // the same env-var chokepoint the watcher and MCP server already honor.
@@ -2418,7 +2446,8 @@ program
         // Start MCP server - it handles initialization lazily based on rootUri from client
         const { MCPServer } = await import('../mcp/index');
         const { BoundWorktree } = await import('../sync/worktree');
-        const server = new MCPServer(projectPath, options.boundWorktree ? new BoundWorktree(options.boundWorktree) : undefined);
+        const binding = options.boundWorktree ? new BoundWorktree(options.boundWorktree) : options.projectOnly ? new BoundWorktree(projectPath!, true) : undefined;
+        const server = new MCPServer(projectPath, binding);
         await server.start();
         // Server will run until terminated
       } else {
@@ -3095,6 +3124,7 @@ program
   .option('--no-permissions', 'Skip writing the auto-allow permissions list (Claude Code and Qwen Code only)')
   .option('--print-config <id>', 'Print MCP config snippet for the named agent and exit (no file writes)')
   .option('--bound-worktree <path>', 'Bind a local Codex MCP configuration to this Git checkout')
+  .option('--project-only', 'Bind local Codex MCP configuration to this exact project')
   .option('--refresh', 'Rewrite what previous installs configured, for already-configured agents only (never adds new ones). Run automatically by `codegraph upgrade`')
   .action(async (opts: {
     target?: string;
@@ -3104,6 +3134,7 @@ program
     permissions?: boolean;
     printConfig?: string;
     boundWorktree?: string;
+    projectOnly?: boolean;
     refresh?: boolean;
   }) => {
     if (opts.printConfig) {
@@ -3183,6 +3214,7 @@ program
         autoAllow,
         yes: opts.yes,
         boundWorktree: opts.boundWorktree,
+        projectOnly: opts.projectOnly,
       });
     } catch (err) {
       error(err instanceof Error ? err.message : String(err));

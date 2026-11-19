@@ -65,17 +65,17 @@ export function isWorktreeSource(root: string, candidate: string, strict = false
   return true;
 }
 
-/** An opt-in MCP identity, independent of HEAD and Git's shared common directory. */
+/** An opt-in project boundary, optionally tied to a Git checkout identity. */
 export class BoundWorktree {
   readonly root: string;
-  private readonly commonDir: string;
+  private readonly commonDir: string | null;
 
-  constructor(input: string) {
+  constructor(input: string, private readonly projectOnly = false) {
     const canonical = fs.realpathSync(path.resolve(input));
     const root = gitWorktreeRoot(canonical);
     const common = gitCommonDir(canonical);
-    if (!root || !common) throw new PathRefusalError(`--bound-worktree requires an existing Git checkout: ${input}`);
-    this.root = root;
+    if (!projectOnly && (!root || !common)) throw new PathRefusalError(`--bound-worktree requires an existing Git checkout: ${input}`);
+    this.root = projectOnly ? canonical : root!;
     this.commonDir = common;
     this.assertIndex();
   }
@@ -99,7 +99,8 @@ export class BoundWorktree {
   }
 
   assertIndex(): void {
-    if (realpath(this.root) !== this.root || gitWorktreeRoot(this.root) !== this.root || gitCommonDir(this.root) !== this.commonDir) {
+    if (realpath(this.root) !== this.root || !fs.statSync(this.root).isDirectory() ||
+        (!this.projectOnly && (gitWorktreeRoot(this.root) !== this.root || gitCommonDir(this.root) !== this.commonDir))) {
       throw new PathRefusalError(`Bound CodeGraph checkout identity changed: ${this.root}. Restart with the intended worktree.`);
     }
     const index = getCodeGraphDir(this.root);

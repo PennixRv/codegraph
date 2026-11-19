@@ -152,7 +152,8 @@ class CodexTarget implements AgentTarget {
     if (opts.boundWorktree && loc !== 'local') throw new Error('Worktree binding requires a local Codex installation.');
     const hook = loc === 'global' && opts.promptHook !== undefined && process.platform === 'linux'
       ? promptHookPlan(opts.promptHook) : null;
-    files.push(writeMcpEntry(loc, opts.boundWorktree));
+    if (opts.projectOnly && loc !== 'local') throw new Error('Project-only binding requires a local Codex installation.');
+    files.push(writeMcpEntry(loc, opts.boundWorktree, opts.projectOnly));
 
     // AGENTS.md gets the short marker-fenced CodeGraph block (#704):
     // subagents and non-MCP harnesses read AGENTS.md but never the MCP
@@ -215,16 +216,17 @@ class CodexTarget implements AgentTarget {
   }
 }
 
-function buildCodegraphBlock(boundWorktree?: string): string {
+function buildCodegraphBlock(boundWorktree?: string, projectRoot?: string): string {
   const mcp = getMcpServerConfig();
   if (boundWorktree) mcp.args.push('--bound-worktree', boundWorktree);
+  if (projectRoot) mcp.args.push('--path', projectRoot, '--project-only');
   return buildTomlTable(TOML_HEADER, {
     command: mcp.command,
     args: mcp.args,
   });
 }
 
-function writeMcpEntry(loc: Location, boundWorktree?: string): WriteResult['files'][number] {
+function writeMcpEntry(loc: Location, boundWorktree?: string, projectOnly?: boolean): WriteResult['files'][number] {
   const file = tomlConfigPath(loc);
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -234,21 +236,33 @@ function writeMcpEntry(loc: Location, boundWorktree?: string): WriteResult['file
   // between two `fs.existsSync` calls.
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
   const ownTable = getTomlTable(existing, TOML_HEADER);
-  if (!boundWorktree && ownTable?.includes('--bound-worktree')) {
+  if (ownTable?.includes('--bound-worktree') || ownTable?.includes('--project-only')) {
     // Preserve an existing safety boundary during install/upgrade refresh.
     const raw = ownTable.match(/^args\s*=\s*(\[.*\])\s*$/m)?.[1];
     const args: unknown = raw ? JSON.parse(raw) : null;
-    if (!Array.isArray(args) || args.length !== 4 || args[0] !== 'serve' || args[1] !== '--mcp' || args[2] !== '--bound-worktree' || typeof args[3] !== 'string') {
+    if (!Array.isArray(args) || args[0] !== 'serve' || args[1] !== '--mcp') {
       throw new Error('Cannot safely refresh existing Codex worktree binding; use an explicit --bound-worktree.');
     }
-    boundWorktree = args[3];
+    let savedRoot: string | undefined;
+    let savedProjectOnly = false;
+    for (let i = 2; i < args.length; i++) {
+      if (args[i] === '--bound-worktree' && typeof args[i + 1] === 'string') boundWorktree ??= args[++i];
+      else if (args[i] === '--path' && typeof args[i + 1] === 'string') savedRoot = args[++i];
+      else if (args[i] === '--project-only') savedProjectOnly = true;
+      else throw new Error('Cannot safely refresh existing Codex project binding.');
+    }
+    if (savedProjectOnly && (!savedRoot || fs.realpathSync(savedRoot) !== fs.realpathSync(process.cwd()))) {
+      throw new Error('Existing Codex project binding does not match the current project.');
+    }
+    projectOnly ||= savedProjectOnly;
   }
   if (boundWorktree) {
     const bound = new BoundWorktree(boundWorktree);
     if (bound.root !== fs.realpathSync(process.cwd())) throw new Error('Local Codex binding must match the current checkout root.');
     boundWorktree = bound.root;
   }
-  const block = buildCodegraphBlock(boundWorktree);
+  const projectRoot = projectOnly ? new BoundWorktree(process.cwd(), true).root : undefined;
+  const block = buildCodegraphBlock(boundWorktree, projectRoot);
   const created = existing.length === 0;
   const { content: nextContent, action } = upsertTomlConnection(existing, TOML_HEADER, block);
 
