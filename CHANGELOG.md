@@ -12,6 +12,8 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- 修复 Codex local install 在显式提供相同 Git 绑定时的重复初始化；消费已有参数并拒绝冲突绑定，保持配置字节幂等。
+
 
 ## [1.6.3-pennix.3] - 2026-11-19
 

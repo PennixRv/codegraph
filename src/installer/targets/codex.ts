@@ -246,7 +246,13 @@ function writeMcpEntry(loc: Location, boundWorktree?: string, projectOnly?: bool
     let savedRoot: string | undefined;
     let savedProjectOnly = false;
     for (let i = 2; i < args.length; i++) {
-      if (args[i] === '--bound-worktree' && typeof args[i + 1] === 'string') boundWorktree ??= args[++i];
+      if (args[i] === '--bound-worktree' && typeof args[i + 1] === 'string') {
+        const savedBoundRoot = args[++i];
+        if (boundWorktree && fs.realpathSync(boundWorktree) !== fs.realpathSync(savedBoundRoot)) {
+          throw new Error('Existing Codex worktree binding does not match the requested checkout.');
+        }
+        boundWorktree ??= savedBoundRoot;
+      }
       else if (args[i] === '--path' && typeof args[i + 1] === 'string') savedRoot = args[++i];
       else if (args[i] === '--project-only') savedProjectOnly = true;
       else throw new Error('Cannot safely refresh existing Codex project binding.');

@@ -106,4 +106,21 @@ describe('project-only initialization', { timeout: 90_000 }, () => {
       expect(fs.readFileSync('AGENTS.md', 'utf8').match(/CODEGRAPH_START/g)).toHaveLength(1);
     } finally { process.chdir(before); }
   });
+
+  it('consumes existing Git binding arguments when reentry explicitly supplies the same root', () => {
+    const root = fixture(), outside = fixture(), before = process.cwd();
+    expect(spawnSync('git', ['init', '-q'], { cwd: root }).status).toBe(0);
+    expect(spawnSync('git', ['init', '-q'], { cwd: outside }).status).toBe(0);
+    try {
+      process.chdir(root);
+      codexTarget.install('local', { autoAllow: false, projectOnly: true, boundWorktree: root });
+      const initial = fs.readFileSync('.codex/config.toml', 'utf8');
+      codexTarget.install('local', { autoAllow: false, projectOnly: true, boundWorktree: root });
+      expect(fs.readFileSync('.codex/config.toml', 'utf8')).toBe(initial);
+      codexTarget.install('local', { autoAllow: false });
+      expect(fs.readFileSync('.codex/config.toml', 'utf8')).toBe(initial);
+      expect(() => codexTarget.install('local', { autoAllow: false, projectOnly: true, boundWorktree: outside })).toThrow('does not match');
+      expect(fs.readFileSync('.codex/config.toml', 'utf8')).toBe(initial);
+    } finally { process.chdir(before); }
+  });
 });
