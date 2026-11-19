@@ -80,6 +80,16 @@ describe('project-only initialization', { timeout: 90_000 }, () => {
     expect(cli(root, 'init', '--yes', '--project-only', '--no-git-hooks').status).toBe(0);
   });
 
+  it('rejects a broader Git binding combined with an exact child project', () => {
+    const root = fixture();
+    expect(spawnSync('git', ['init', '-q'], { cwd: root }).status).toBe(0);
+    const child = path.join(root, 'child');
+    fs.mkdirSync(child);
+    const result = cli(root, 'serve', '--mcp', '--path', child, '--project-only', '--bound-worktree', root);
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('same project root');
+  });
+
   it('preserves project-only MCP wiring on native refresh and user policy fields', () => {
     const root = fixture(), before = process.cwd();
     try {

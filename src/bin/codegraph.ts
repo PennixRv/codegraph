@@ -2447,6 +2447,7 @@ program
         const { MCPServer } = await import('../mcp/index');
         const { BoundWorktree } = await import('../sync/worktree');
         const binding = options.boundWorktree ? new BoundWorktree(options.boundWorktree) : options.projectOnly ? new BoundWorktree(projectPath!, true) : undefined;
+        if (options.projectOnly && binding?.root !== projectPath) throw new Error('--project-only and --bound-worktree must identify the same project root.');
         const server = new MCPServer(projectPath, binding);
         await server.start();
         // Server will run until terminated
